@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/Jack-Overflow/Evigo/internal/api"
 	"github.com/Jack-Overflow/Evigo/internal/config"
 	"github.com/Jack-Overflow/Evigo/internal/database"
 	"github.com/Jack-Overflow/Evigo/internal/devices"
@@ -140,7 +142,48 @@ func run(settings config.Config, stderr io.Writer) error {
 		PingTimeout:           settings.Probe.Timeout,
 		MaxReadingAge:         settings.NUT.MaxReadingAge,
 	}, ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, logger)
-	logger.Info("Evigo started", "version", version, "devices", len(configuredDevices), "pending", len(saved))
+	services := []func(context.Context) error{loop.Run}
+	if settings.Web.Listen != "" {
+		listener, err := net.Listen("tcp", settings.Web.Listen)
+		if err != nil {
+			return fmt.Errorf("cannot start web listener: %w", err)
+		}
 
-	return loop.Run(ctx)
+		defer listener.Close()
+		server := api.New(webSettings(settings), loop.Snapshot)
+		services = append(services, func(ctx context.Context) error { return server.Serve(ctx, listener) })
+	}
+
+	logger.Info("Evigo started", "version", version, "devices", len(configuredDevices), "pending", len(saved), "web", settings.Web.Listen)
+
+	return runAllUntilOneStops(ctx, services)
+}
+
+func webSettings(settings config.Config) api.Settings {
+	return api.Settings{
+		Listen:        settings.Web.Listen,
+		AllowedHosts:  settings.Web.AllowedHosts,
+		Version:       version,
+		UPS:           settings.NUT.UPS,
+		HealthyWithin: 3*max(settings.Poll.Interval, settings.Poll.OnBatteryInterval) + settings.NUT.ReadTimeout + settings.Probe.Timeout,
+	}
+}
+
+func runAllUntilOneStops(ctx context.Context, services []func(context.Context) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan error, len(services))
+	for _, service := range services {
+		go func() {
+			results <- service(ctx)
+			cancel()
+		}()
+	}
+
+	var errs []error
+	for range services {
+		errs = append(errs, <-results)
+	}
+
+	return errors.Join(errs...)
 }

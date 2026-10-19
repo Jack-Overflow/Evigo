@@ -297,3 +297,69 @@ func TestGivenUntrustedUPSStatusWhenReadThenLogsContainOnlyKnownFlags(t *testing
 		t.Fatal("unknown status established recovery")
 	}
 }
+
+func TestGivenPendingDeviceWhenSnapshotReadThenItReflectsTheLatestPass(t *testing.T) {
+	// Given a device pending after an outage, with power not yet stable.
+	h := newHarness(t)
+	h.outageThenStablePower()
+
+	// When the status is read.
+	latest := h.monitor.Snapshot()
+
+	// Then it shows the latest reading, reachability and recovery progress.
+	device := latest.Devices[0]
+	if device.Reachability != devices.Offline || device.Pending == nil || device.WakeSent {
+		t.Fatalf("device status %+v", device)
+	}
+	if latest.Reading == nil || !latest.CheckedAt.Equal(h.clock) || !latest.StorageOK {
+		t.Fatalf("snapshot %+v", latest)
+	}
+	if latest.PowerBlock(h.clock) != recovery.Stabilising || latest.PowerBlock(h.clock.Add(10*time.Second)) != recovery.NoBlock {
+		t.Fatal("power block does not follow the stability delay")
+	}
+}
+
+func TestGivenSavingFailsWhenSnapshotReadThenStorageIsReportedUnavailable(t *testing.T) {
+	// Given a device due for waking and storage that cannot save.
+	h := newHarness(t)
+	h.outageThenStablePower()
+	h.storage.fail = true
+
+	// When the next pass runs.
+	h.pass(10 * time.Second)
+
+	// Then the status shows storage as unavailable.
+	if h.monitor.Snapshot().StorageOK {
+		t.Fatal("storage failure not reported")
+	}
+}
+
+func TestGivenNoPassYetWhenSnapshotReadThenItHasNoReadingAndUnknownDevices(t *testing.T) {
+	// Given a monitor that has not run a pass.
+	h := newHarness(t)
+
+	// When the status is read.
+	latest := h.monitor.Snapshot()
+
+	// Then nothing has been checked yet.
+	if !latest.CheckedAt.IsZero() || latest.Reading != nil || latest.Devices[0].Reachability != devices.Unknown {
+		t.Fatalf("snapshot %+v", latest)
+	}
+}
+
+func TestGivenSnapshotReadWhenCallerChangesItThenTheMonitorsDevicesAreUnaffected(t *testing.T) {
+	// Given a monitor after a pass.
+	h := newHarness(t)
+	h.pass(0)
+	wakeAddress := h.monitor.devices[0].WakeAddress
+
+	// When a caller changes the device in its snapshot.
+	latest := h.monitor.Snapshot()
+	latest.Devices[0].Device.WakeAddress = "192.0.2.99:9"
+	latest.Devices[0].Device.MAC[0] = 0xff
+
+	// Then the device the monitor pings and wakes is unchanged.
+	if h.monitor.devices[0].WakeAddress != wakeAddress || h.monitor.devices[0].MAC[0] == 0xff {
+		t.Fatal("caller changed the device the monitor wakes")
+	}
+}

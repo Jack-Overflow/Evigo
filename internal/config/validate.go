@@ -6,11 +6,15 @@ import (
 	"math"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
 
-var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+var (
+	idPattern       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$`)
+)
 
 func (settings Config) Validate() error {
 	for _, validate := range []func() error{
@@ -18,6 +22,7 @@ func (settings Config) Validate() error {
 		settings.validateNUT,
 		settings.validateDurations,
 		settings.validateRecovery,
+		settings.validateWeb,
 		settings.validateDevices,
 	} {
 		if err := validate(); err != nil {
@@ -88,6 +93,44 @@ func (settings Config) validateRecovery() error {
 	}
 
 	return nil
+}
+
+func (settings Config) validateWeb() error {
+	if settings.Web.Listen == "" {
+		return nil
+	}
+
+	host, port, err := net.SplitHostPort(settings.Web.Listen)
+	if err != nil || !numericPortOK(port) || (host != "" && net.ParseIP(host) == nil) {
+		return errors.New("web.listen must be an IP address and port, such as 127.0.0.1:8080")
+	}
+
+	for _, allowed := range settings.Web.AllowedHosts {
+		if !allowedHostOK(allowed) {
+			return errors.New("web.allowed_hosts entries must be a hostname or IP address with an optional port, without a scheme or path")
+		}
+	}
+
+	return nil
+}
+
+func allowedHostOK(allowed string) bool {
+	host := allowed
+	if splitHost, port, err := net.SplitHostPort(allowed); err == nil {
+		if !numericPortOK(port) {
+			return false
+		}
+
+		host = splitHost
+	}
+
+	return net.ParseIP(host) != nil || hostnamePattern.MatchString(host)
+}
+
+func numericPortOK(port string) bool {
+	number, err := strconv.Atoi(port)
+
+	return err == nil && portOK(number)
 }
 
 func (settings Config) validateDevices() error {

@@ -152,6 +152,31 @@ devices:
       broadcast: 192.168.20.255
 ```
 
+## Status API
+
+Evigo can serve its current status over HTTP. It's off until you choose an
+address for it:
+
+```yaml
+web:
+  listen: 127.0.0.1:8080
+```
+
+There is **no login**. Anyone who can reach it can see your UPS and machines, so
+keep it on `127.0.0.1` or put it behind a reverse proxy that adds a login and
+HTTPS. If you reach it by a hostname, list that name so Evigo accepts it:
+
+```yaml
+web:
+  listen: 127.0.0.1:8080
+  allowed_hosts: [evigo.example.lan]
+```
+
+| Request           | Returns                                                                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET /api/status` | UPS status, each machine's reachability, recovery progress, and why waking is blocked right now, if it is. |
+| `GET /health`     | `200` while Evigo is checking your UPS and machines normally; useful for uptime monitors.                  |
+
 ## Troubleshooting
 
 **A machine wasn't woken.** Check that:
@@ -175,6 +200,9 @@ can't check are never woken, so this is worth fixing first.
 **A slow machine was missed.** If it was still shutting down when the power came
 back, increase `shutdown_grace_period` so it's longer than the machine's
 shutdown.
+
+**Evigo won't start because the web address is in use.** Pick a different
+`web.listen` port, or leave it empty to turn it off.
 
 **Evigo won't start because of its database.** Evigo refuses to touch a database
 file it doesn't recognise, including leaving its journal mode unchanged. Stop it,

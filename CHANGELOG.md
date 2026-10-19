@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Optional read-only status API, turned on with `web.listen`: `GET /api/status`
+  shows UPS status, each machine's reachability, recovery progress, and why
+  waking is blocked; `GET /health` reports whether Evigo is checking normally.
+  Host and Origin checks stop DNS rebinding and cross-site requests.
+
 ## 0.1.0
 
 Initial release.

@@ -33,6 +33,14 @@ probe:
 wol:
   broadcast: 255.255.255.255
   port: 9
+web:
+  # Leave empty to turn off the dashboard and API.
+  # It has no login: keep it on loopback or behind a reverse proxy that adds one.
+  listen: ''
+  # listen: 127.0.0.1:8080
+  # Hostnames the dashboard is reached by, for example through a reverse proxy.
+  # Without this, only IP addresses and localhost are accepted.
+  # allowed_hosts: [evigo.example.lan]
 devices:
   - id: server
     name: Home server

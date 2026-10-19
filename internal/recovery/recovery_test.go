@@ -479,3 +479,43 @@ func TestGivenPendingDeviceWhenPingIsUnknownThenNoWakeIsScheduled(t *testing.T) 
 		}
 	}
 }
+
+func TestGivenPowerStateWhenBlockCheckedThenTheReasonMatchesWhyWakingIsNotAllowed(t *testing.T) {
+	stableSince := start.Add(-time.Minute)
+	for _, scenario := range []struct {
+		name      string
+		reading   *nut.Reading
+		readAge   time.Duration
+		safeSince time.Time
+		want      Block
+	}{
+		{"stable mains", mains, 0, stableSince, NoBlock},
+		{"just restored", mains, 0, start.Add(-10 * time.Second), Stabilising},
+		{"never safe", mains, 0, time.Time{}, Stabilising},
+		{"on battery", onBattery, 0, stableSince, OnBattery},
+		{"low battery", lowMains, 0, stableSince, BatteryLow},
+		{"alarm flag", &nut.Reading{Status: "OL ALARM", Battery: 100}, 0, stableSince, UnsafeStatus},
+		{"no reading", nil, 0, stableSince, NoReading},
+		{"expired reading", mains, time.Minute, stableSince, NoReading},
+		{"reading exactly at max age", mains, 30 * time.Second, stableSince, NoReading},
+		{"reading just inside max age", mains, 30*time.Second - time.Nanosecond, stableSince, NoBlock},
+		{"reading from the future", mains, -time.Minute, stableSince, NoReading},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			// Given
+			var reading *nut.Reading
+			if scenario.reading != nil {
+				reading = scenario.reading.Copy()
+				reading.At = start.Add(-scenario.readAge)
+			}
+
+			// When
+			got := testSettings().PowerBlock(start, reading, scenario.safeSince)
+
+			// Then
+			if got != scenario.want {
+				t.Fatalf("got %q, want %q", got, scenario.want)
+			}
+		})
+	}
+}

@@ -5,11 +5,13 @@ import (
 	"log/slog"
 	"maps"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
+	"github.com/Jack-Overflow/Evigo/internal/snapshot"
 )
 
 type UPS interface {
@@ -37,7 +39,9 @@ type Monitor struct {
 	now        func() time.Time
 	log        *slog.Logger
 	saved      map[string]recovery.Progress
+	storageOK  bool
 	lastStatus string
+	snapshot   atomic.Pointer[snapshot.Snapshot]
 }
 
 func New(
@@ -50,17 +54,25 @@ func New(
 	ping devices.Runner,
 	log *slog.Logger,
 ) *Monitor {
-	return &Monitor{
-		settings: settings,
-		ups:      ups,
-		devices:  configured,
-		recovery: deviceRecovery,
-		storage:  storage,
-		saved:    saved,
-		ping:     ping,
-		now:      time.Now,
-		log:      log,
+	monitor := &Monitor{
+		settings:  settings,
+		ups:       ups,
+		devices:   configured,
+		recovery:  deviceRecovery,
+		storage:   storage,
+		saved:     saved,
+		storageOK: true,
+		ping:      ping,
+		now:       time.Now,
+		log:       log,
 	}
+	monitor.publishSnapshot(time.Time{}, nil, nil)
+
+	return monitor
+}
+
+func (monitor *Monitor) Snapshot() snapshot.Snapshot {
+	return monitor.snapshot.Load().Copy()
 }
 
 func (monitor *Monitor) Run(ctx context.Context) error {
@@ -77,10 +89,13 @@ func (monitor *Monitor) Run(ctx context.Context) error {
 func (monitor *Monitor) Pass(ctx context.Context) time.Duration {
 	reading := monitor.readUPS(ctx)
 	reachability := monitor.pingDevices(ctx)
-	due := monitor.recovery.Update(recovery.Pass{At: monitor.now(), Reading: reading, Reachability: reachability})
+	at := monitor.now()
+	due := monitor.recovery.Update(recovery.Pass{At: at, Reading: reading, Reachability: reachability})
 	if monitor.savePending(ctx) {
 		monitor.sendWakes(ctx, due, reading)
 	}
+
+	monitor.publishSnapshot(at, reading, reachability)
 
 	if reading != nil && reading.OnBattery() {
 		return monitor.settings.OnBatteryPollInterval
@@ -136,11 +151,13 @@ func (monitor *Monitor) savePending(ctx context.Context) bool {
 	if err := monitor.storage.SavePending(ctx, pending); err != nil {
 		monitor.log.Error("cannot save recovery state; waking is paused", "error", err)
 		monitor.recovery.StorageFailed()
+		monitor.storageOK = false
 
 		return false
 	}
 
 	monitor.saved = pending
+	monitor.storageOK = true
 
 	return true
 }
@@ -170,4 +187,30 @@ func (monitor *Monitor) sendWakes(ctx context.Context, due []*devices.Device, re
 		monitor.recovery.WakeSent(device.ID)
 		monitor.log.Info("wake sent", "device", device.ID, "mac", device.MAC.String())
 	}
+}
+
+func (monitor *Monitor) publishSnapshot(at time.Time, reading *nut.Reading, reachability map[string]devices.Reachability) {
+	pending := monitor.recovery.Pending()
+	latest := snapshot.Snapshot{
+		CheckedAt:        at,
+		Reading:          reading,
+		SafeSince:        monitor.recovery.SafeSince(),
+		StorageOK:        monitor.storageOK,
+		RecoverySettings: monitor.recovery.Settings(),
+	}
+	for _, device := range monitor.devices {
+		deviceSnapshot := snapshot.Device{
+			Device:       *device,
+			Reachability: reachability[device.ID],
+			WakeSent:     monitor.recovery.WakeSentTo(device.ID),
+		}
+		if progress, found := pending[device.ID]; found {
+			deviceSnapshot.Pending = &progress
+		}
+
+		latest.Devices = append(latest.Devices, deviceSnapshot)
+	}
+
+	published := latest.Copy()
+	monitor.snapshot.Store(&published)
 }

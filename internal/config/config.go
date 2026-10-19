@@ -27,7 +27,13 @@ type Config struct {
 	Recovery Recovery `yaml:"recovery"`
 	Probe    Probe    `yaml:"probe"`
 	WOL      WOL      `yaml:"wol"`
+	Web      Web      `yaml:"web"`
 	Devices  []Device `yaml:"devices"`
+}
+
+type Web struct {
+	Listen       string   `yaml:"listen"`
+	AllowedHosts []string `yaml:"allowed_hosts"`
 }
 
 type NUT struct {

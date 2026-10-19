@@ -8,6 +8,17 @@ import (
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 )
 
+type Block string
+
+const (
+	NoBlock      Block = ""
+	NoReading    Block = "no_reading"
+	OnBattery    Block = "on_battery"
+	BatteryLow   Block = "battery_low"
+	UnsafeStatus Block = "unsafe_status"
+	Stabilising  Block = "stabilising"
+)
+
 type Progress struct {
 	Attempts    int
 	LastAttempt time.Time
@@ -92,6 +103,35 @@ func (recovery *Recovery) WakeSent(deviceID string) {
 	if progress := recovery.pending[deviceID]; progress != nil {
 		recovery.wakeSent[deviceID] = true
 	}
+}
+
+func (settings Settings) PowerBlock(at time.Time, reading *nut.Reading, safeSince time.Time) Block {
+	switch {
+	case reading == nil || at.Before(reading.At) || at.Sub(reading.At) >= settings.MaxReadingAge:
+		return NoReading
+	case reading.OnBattery():
+		return OnBattery
+	case reading.Safe(0) && !reading.Safe(settings.MinBatteryPercent):
+		return BatteryLow
+	case !reading.Safe(settings.MinBatteryPercent):
+		return UnsafeStatus
+	case safeSince.IsZero() || at.Sub(safeSince) < settings.StablePowerDelay:
+		return Stabilising
+	}
+
+	return NoBlock
+}
+
+func (recovery *Recovery) Settings() Settings {
+	return recovery.settings
+}
+
+func (recovery *Recovery) SafeSince() time.Time {
+	return recovery.safeSince
+}
+
+func (recovery *Recovery) WakeSentTo(deviceID string) bool {
+	return recovery.wakeSent[deviceID]
 }
 
 func (recovery *Recovery) StorageFailed() {
