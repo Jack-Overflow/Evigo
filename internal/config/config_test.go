@@ -160,17 +160,17 @@ func TestGivenWebSettingsWhenValidatedThenOnlyAddressesAndExactHostsAreAccepted(
 		{"empty host", Web{Listen: ":8080", AllowedHosts: []string{""}}, false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			// Given
+			// Given a valid configuration with these web settings.
 			settings, err := loadText(t, minimal)
 			if err != nil {
 				t.Fatal(err)
 			}
 			settings.Web = scenario.web
 
-			// When
+			// When it is validated.
 			err = settings.Validate()
 
-			// Then
+			// Then only IP listen addresses and exact host names are accepted.
 			if (err == nil) != scenario.valid {
 				t.Fatalf("validation error %v; want valid=%t", err, scenario.valid)
 			}

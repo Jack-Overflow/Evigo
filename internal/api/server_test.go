@@ -91,13 +91,13 @@ func statusBody(t *testing.T, server *Server) statusResponse {
 }
 
 func TestGivenRunningMonitorWhenStatusRequestedThenPowerDevicesAndSettingsAreReported(t *testing.T) {
-	// Given
+	// Given a recent pass with fresh, stable mains power, one idle machine and one pending.
 	server, _ := testServer("127.0.0.1:8080")
 
-	// When
+	// When the status is requested.
 	body := statusBody(t, server)
 
-	// Then
+	// Then power, both machines, their recovery progress and the settings are reported.
 	power := body.Power
 	if !power.Available || power.Block != nil || *power.BatteryPercent != 80 || strings.Join(power.Status, " ") != "OL CHRG" {
 		t.Fatalf("power %+v", power)
@@ -118,14 +118,14 @@ func TestGivenRunningMonitorWhenStatusRequestedThenPowerDevicesAndSettingsAreRep
 }
 
 func TestGivenReadingOlderThanMaxAgeWhenStatusRequestedThenPowerIsReportedUnavailable(t *testing.T) {
-	// Given
+	// Given a reading a minute old.
 	server, fake := testServer("127.0.0.1:8080")
 	fake.latest.Reading.At = now.Add(-time.Minute)
 
-	// When
+	// When the status is requested.
 	body := statusBody(t, server)
 
-	// Then
+	// Then power is unavailable, blocked by no_reading, and no wake time is given.
 	if body.Power.Available || body.Power.Block == nil || *body.Power.Block != string(recovery.NoReading) {
 		t.Fatalf("power %+v", body.Power)
 	}
@@ -172,13 +172,13 @@ func TestGivenListenerWhenRequestHostVariesThenOnlySafeHostsAreAccepted(t *testi
 		{"allowlist refuses others", "127.0.0.1:8080", []string{"evigo.example.lan"}, "127.0.0.1:8080", false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			// Given
+			// Given a loopback, LAN or allowlisted listener.
 			server, _ := testServer(scenario.listen, scenario.allowed...)
 
-			// When
+			// When a request arrives with this Host header.
 			response := get(server, "/api/status", scenario.host)
 
-			// Then
+			// Then only safe hosts are served.
 			if (response.Code == http.StatusOK) != scenario.want {
 				t.Fatalf("status %d", response.Code)
 			}
@@ -187,17 +187,17 @@ func TestGivenListenerWhenRequestHostVariesThenOnlySafeHostsAreAccepted(t *testi
 }
 
 func TestGivenCrossSiteOriginWhenStatusRequestedThenItIsRefused(t *testing.T) {
-	// Given
+	// Given a request from another site.
 	server, _ := testServer("127.0.0.1:8080")
 	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	request.Host = "127.0.0.1:8080"
 	request.Header.Set("Origin", "https://attacker.example")
 
-	// When
+	// When it reaches the server.
 	recorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(recorder, request)
 
-	// Then
+	// Then it is refused.
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status %d", recorder.Code)
 	}
@@ -215,14 +215,14 @@ func TestGivenMonitorProgressWhenHealthCheckedThenStaleOrStartingLoopsAreUnhealt
 		{"no pass yet", time.Time{}, http.StatusServiceUnavailable, `"status":"starting"`},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			// Given
+			// Given the last pass was recent, long ago, or has not happened yet.
 			server, fake := testServer("127.0.0.1:8080")
 			fake.latest.CheckedAt = scenario.checkedAt
 
-			// When
+			// When health is checked.
 			response := get(server, "/health", "127.0.0.1:8080")
 
-			// Then
+			// Then only a recent pass is healthy.
 			if response.Code != scenario.wantCode || !strings.Contains(response.Body.String(), scenario.wantBody) {
 				t.Fatalf("status %d: %s", response.Code, response.Body)
 			}
@@ -231,10 +231,10 @@ func TestGivenMonitorProgressWhenHealthCheckedThenStaleOrStartingLoopsAreUnhealt
 }
 
 func TestGivenNoBuiltDashboardOrUnknownRouteWhenRequestedThenTheRightErrorIsReturned(t *testing.T) {
-	// Given
+	// Given a server with no dashboard files built.
 	server, _ := testServer("127.0.0.1:8080")
 
-	// When
+	// When the dashboard, an unknown API route and a wrong method are requested.
 	page := get(server, "/", "127.0.0.1:8080")
 	unknownAPI := get(server, "/api/missing", "127.0.0.1:8080")
 	request := httptest.NewRequest(http.MethodPost, "/api/status", nil)
@@ -242,7 +242,7 @@ func TestGivenNoBuiltDashboardOrUnknownRouteWhenRequestedThenTheRightErrorIsRetu
 	wrongMethod := httptest.NewRecorder()
 	server.Handler().ServeHTTP(wrongMethod, request)
 
-	// Then
+	// Then each gets its own error, with security headers set.
 	if wrongMethod.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST /api/status %d", wrongMethod.Code)
 	}

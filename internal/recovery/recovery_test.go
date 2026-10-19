@@ -351,17 +351,17 @@ func TestGivenRepeatedOutageWhenDeviceIsPendingThenProgressIsKept(t *testing.T) 
 func TestGivenStableRecoveryWhenPassesAreInterruptedThenTimersPauseAndStabilityRestarts(t *testing.T) {
 	for _, gap := range []time.Duration{time.Hour, -time.Hour} {
 		t.Run(gap.String(), func(t *testing.T) {
-			// Given
+			// Given a woken device during stable power.
 			h := newHarness(t, nil)
 			h.outage()
 			h.passesUntilWake(mains, 10)
 			before := h.recovery.Pending()["server"]
 
-			// When
+			// When the next pass comes after a long gap or with time going backwards.
 			due := h.pass(gap, mains, offline)
 			after := h.recovery.Pending()["server"]
 
-			// Then
+			// Then nothing is woken or spent across the gap, and the full stability delay applies again.
 			if len(due) != 0 || after.TimeLeft != before.TimeLeft || after.GraceLeft != before.GraceLeft {
 				t.Fatalf("recovery advanced across a gap: due %v, before %+v, after %+v", due, before, after)
 			}
@@ -375,7 +375,7 @@ func TestGivenStableRecoveryWhenPassesAreInterruptedThenTimersPauseAndStabilityR
 func TestGivenPendingRecoveryWhenReadingHasInvalidAgeThenTimersPauseAndStabilityRestarts(t *testing.T) {
 	for _, age := range []time.Duration{time.Minute, -time.Minute} {
 		t.Run(age.String(), func(t *testing.T) {
-			// Given
+			// Given a woken device during stable power.
 			h := newHarness(t, nil)
 			h.outage()
 			h.passesUntilWake(mains, 10)
@@ -384,10 +384,10 @@ func TestGivenPendingRecoveryWhenReadingHasInvalidAgeThenTimersPauseAndStability
 			reading := mains.Copy()
 			reading.At = h.now.Add(-age)
 
-			// When
+			// When a pass arrives with a reading that is too old or from the future.
 			due := h.recovery.Update(Pass{At: h.now, Reading: reading, Reachability: map[string]devices.Reachability{"server": offline}})
 
-			// Then
+			// Then nothing is woken or spent, and the full stability delay applies again.
 			if len(due) != 0 || h.recovery.Pending()["server"] != before {
 				t.Fatal("invalid-age reading advanced recovery")
 			}
@@ -399,35 +399,35 @@ func TestGivenPendingRecoveryWhenReadingHasInvalidAgeThenTimersPauseAndStability
 }
 
 func TestGivenUnsentAttemptWhenDeviceAnswersDuringGraceThenItRemainsPending(t *testing.T) {
-	// Given
+	// Given a device due for waking whose packets were never confirmed as sent.
 	h := newHarness(t, nil)
 	h.outage()
 	for range 4 {
 		h.pass(pollStep, mains, offline)
 	}
 
-	// When
+	// When it answers ping during shutdown grace.
 	h.pass(pollStep, mains, online)
 
-	// Then
+	// Then it stays pending.
 	if len(h.recovery.Pending()) != 1 {
 		t.Fatal("unsent attempt bypassed shutdown grace")
 	}
 }
 
 func TestGivenPreviouslyWokenDeviceWhenAnotherOutageOccursThenNewGraceApplies(t *testing.T) {
-	// Given
+	// Given a device woken after one outage.
 	h := newHarness(t, nil)
 	h.outage()
 	h.passesUntilWake(mains, 10)
 
-	// When
+	// When a second outage starts and power returns with the device still online.
 	h.pass(pollStep, onBattery, online)
 	for range 4 {
 		h.pass(pollStep, mains, online)
 	}
 
-	// Then
+	// Then new shutdown grace applies, and it is woken if it then goes offline.
 	if len(h.recovery.Pending()) != 1 {
 		t.Fatal("previous outage's wake bypassed new shutdown grace")
 	}
@@ -437,43 +437,43 @@ func TestGivenPreviouslyWokenDeviceWhenAnotherOutageOccursThenNewGraceApplies(t 
 }
 
 func TestGivenFutureSavedAttemptWhenRestartedThenRetryFollowsFullStabilityDelay(t *testing.T) {
-	// Given
+	// Given a saved attempt timestamped an hour in the future.
 	h := newHarness(t, map[string]Progress{"server": {Attempts: 1, LastAttempt: start.Add(time.Hour), TimeLeft: time.Minute}})
 
-	// When
+	// When Evigo restarts and power is stable.
 	woken := h.passesUntilWake(mains, 5)
 
-	// Then
+	// Then the retry happens after the normal stability delay.
 	if woken != 4 || h.recovery.Pending()["server"].Attempts != 2 {
 		t.Fatalf("future timestamp suppressed retry: pass %d, pending %v", woken, h.recovery.Pending())
 	}
 }
 
 func TestGivenSavedAttemptWhenRestartedThenAnOnlineReplyStillHonoursGrace(t *testing.T) {
-	// Given
+	// Given a saved attempt with shutdown grace left.
 	h := newHarness(t, map[string]Progress{"server": {Attempts: 1, LastAttempt: start.Add(-time.Minute), TimeLeft: time.Minute, GraceLeft: time.Minute}})
 
-	// When
+	// When Evigo restarts and the device answers ping.
 	for range 4 {
 		h.pass(pollStep, mains, online)
 	}
 
-	// Then
+	// Then it stays pending, because a saved attempt is not proof a packet was sent.
 	if len(h.recovery.Pending()) != 1 {
 		t.Fatal("restored attempt was treated as a confirmed send")
 	}
 }
 
 func TestGivenPendingDeviceWhenPingIsUnknownThenNoWakeIsScheduled(t *testing.T) {
-	// Given
+	// Given a device pending after an outage.
 	h := newHarness(t, nil)
 	h.outage()
 
-	// When
+	// When power is stable but its ping result is unknown.
 	for range 10 {
 		due := h.pass(pollStep, mains, devices.Unknown)
 
-		// Then
+		// Then no wake is scheduled.
 		if len(due) != 0 {
 			t.Fatal("unknown ping scheduled a wake")
 		}
@@ -502,17 +502,17 @@ func TestGivenPowerStateWhenBlockCheckedThenTheReasonMatchesWhyWakingIsNotAllowe
 		{"reading from the future", mains, -time.Minute, stableSince, NoReading},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			// Given
+			// Given a reading of this age and a time power became safe.
 			var reading *nut.Reading
 			if scenario.reading != nil {
 				reading = scenario.reading.Copy()
 				reading.At = start.Add(-scenario.readAge)
 			}
 
-			// When
+			// When the block is worked out.
 			got := testSettings().PowerBlock(start, reading, scenario.safeSince)
 
-			// Then
+			// Then it names why waking is not allowed, or nothing when it is.
 			if got != scenario.want {
 				t.Fatalf("got %q, want %q", got, scenario.want)
 			}

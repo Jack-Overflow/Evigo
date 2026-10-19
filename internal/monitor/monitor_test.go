@@ -117,7 +117,7 @@ func (h *harness) packetReceived() bool {
 }
 
 func TestGivenDueDeviceWhenPassRunsThenAttemptIsSavedBeforeThePacketIsSent(t *testing.T) {
-	// Given
+	// Given a device due for waking, and storage that checks for a packet as it saves.
 	h := newHarness(t)
 	h.outageThenStablePower()
 	savesBefore := len(h.storage.saves)
@@ -129,10 +129,10 @@ func TestGivenDueDeviceWhenPassRunsThenAttemptIsSavedBeforeThePacketIsSent(t *te
 		checkedBeforeSave = true
 	}
 
-	// When
+	// When the next pass runs.
 	h.pass(10 * time.Second)
 
-	// Then
+	// Then the attempt is saved before the packet arrives, and the packet is then sent.
 	if !checkedBeforeSave || len(h.storage.saves) != savesBefore+1 || h.storage.saves[savesBefore]["server"].Attempts != 1 {
 		t.Fatalf("saves %v", h.storage.saves)
 	}
@@ -142,22 +142,22 @@ func TestGivenDueDeviceWhenPassRunsThenAttemptIsSavedBeforeThePacketIsSent(t *te
 }
 
 func TestGivenDueDeviceWhenSavingFailsThenNoPacketIsSent(t *testing.T) {
-	// Given
+	// Given a device due for waking and storage that cannot save.
 	h := newHarness(t)
 	h.outageThenStablePower()
 	h.storage.fail = true
 
-	// When
+	// When the next pass runs.
 	h.pass(10 * time.Second)
 
-	// Then
+	// Then no packet is sent.
 	if h.packetReceived() {
 		t.Fatal("sent a packet without saving the attempt")
 	}
 }
 
 func TestGivenDueDeviceWhenReadingIsTooOldAtSendTimeThenNoPacketIsSent(t *testing.T) {
-	// Given
+	// Given a device due for waking, and a clock a minute ahead of the reading by the time it sends.
 	h := newHarness(t)
 	h.outageThenStablePower()
 
@@ -166,49 +166,49 @@ func TestGivenDueDeviceWhenReadingIsTooOldAtSendTimeThenNoPacketIsSent(t *testin
 	h.ups.clock = &readingTime
 	h.monitor.now = func() time.Time { return readingTime.Add(time.Minute) }
 
-	// When
+	// When the pass runs.
 	h.monitor.Pass(context.Background())
 
-	// Then
+	// Then no packet is sent from the expired reading.
 	if h.packetReceived() {
 		t.Fatal("sent a packet from a stale reading")
 	}
 }
 
 func TestGivenUPSStateWhenPassFinishesThenPollIntervalMatchesPowerSource(t *testing.T) {
-	// Given
+	// Given a monitor with 10s and 2s poll intervals.
 	h := newHarness(t)
 
-	// When
+	// When passes run on mains, on battery and with the UPS unreachable.
 	onMains := h.pass(0)
 	h.ups.status = "OB DISCHRG"
 	onBattery := h.pass(time.Second)
 	h.ups.status = ""
 	unavailable := h.pass(time.Second)
 
-	// Then
+	// Then only the battery pass asks for the shorter interval.
 	if onMains != 10*time.Second || onBattery != 2*time.Second || unavailable != 10*time.Second {
 		t.Fatalf("intervals %s %s %s", onMains, onBattery, unavailable)
 	}
 }
 
 func TestGivenNoChangesWhenPassesRunThenNothingIsSaved(t *testing.T) {
-	// Given
+	// Given a healthy UPS and no recorded outage.
 	h := newHarness(t)
 
-	// When
+	// When five passes run.
 	for range 5 {
 		h.pass(10 * time.Second)
 	}
 
-	// Then
+	// Then storage is never written.
 	if len(h.storage.saves) != 0 {
 		t.Fatalf("%d unnecessary saves", len(h.storage.saves))
 	}
 }
 
 func TestGivenTwoDueDevicesWhenReadingExpiresBetweenSendsThenOnlyFirstPacketIsSent(t *testing.T) {
-	// Given
+	// Given two due devices and a clock that reaches the reading's expiry after the first send.
 	h := newHarness(t)
 	device := h.monitor.devices[0]
 	reading := &nut.Reading{At: h.clock, Status: "OL", Battery: 100}
@@ -219,10 +219,10 @@ func TestGivenTwoDueDevicesWhenReadingExpiresBetweenSendsThenOnlyFirstPacketIsSe
 		return at
 	}
 
-	// When
+	// When wakes are sent.
 	h.monitor.sendWakes(context.Background(), []*devices.Device{device, device}, reading)
 
-	// Then
+	// Then only the first packet goes out.
 	if !h.packetReceived() || h.packetReceived() {
 		t.Fatal("expected exactly one packet before the reading expired")
 	}
@@ -231,7 +231,7 @@ func TestGivenTwoDueDevicesWhenReadingExpiresBetweenSendsThenOnlyFirstPacketIsSe
 func TestGivenSkippedFirstWakeWhenDeviceAnswersDuringGraceThenItRemainsPending(t *testing.T) {
 	for _, reason := range []string{"storage failure", "expired reading", "send failure"} {
 		t.Run(reason, func(t *testing.T) {
-			// Given
+			// Given a device whose first wake is not sent, for this reason.
 			h := newHarness(t)
 			h.outageThenStablePower()
 			switch reason {
@@ -243,7 +243,7 @@ func TestGivenSkippedFirstWakeWhenDeviceAnswersDuringGraceThenItRemainsPending(t
 				h.monitor.devices[0].WakeAddress = "invalid address"
 			}
 
-			// When
+			// When it then answers ping during shutdown grace.
 			h.pass(10 * time.Second)
 			h.storage.fail = false
 			h.storage.beforeSave = nil
@@ -252,7 +252,7 @@ func TestGivenSkippedFirstWakeWhenDeviceAnswersDuringGraceThenItRemainsPending(t
 				h.pass(10 * time.Second)
 			}
 
-			// Then
+			// Then it stays pending and no packet was sent.
 			if h.packetReceived() || len(h.monitor.recovery.Pending()) != 1 {
 				t.Fatal("skipped send bypassed grace or emitted a packet")
 			}
@@ -261,7 +261,7 @@ func TestGivenSkippedFirstWakeWhenDeviceAnswersDuringGraceThenItRemainsPending(t
 }
 
 func TestGivenSuccessfulWakeWhenDeviceAnswersThenMonitorFinishesRecovery(t *testing.T) {
-	// Given
+	// Given a device that has been sent a wake packet.
 	h := newHarness(t)
 	h.outageThenStablePower()
 	h.pass(10 * time.Second)
@@ -269,27 +269,27 @@ func TestGivenSuccessfulWakeWhenDeviceAnswersThenMonitorFinishesRecovery(t *test
 		t.Fatal("no wake packet")
 	}
 
-	// When
+	// When it answers ping on the next pass.
 	h.online = true
 	h.pass(10 * time.Second)
 
-	// Then
+	// Then recovery finishes and the pending device is removed from storage.
 	if len(h.monitor.recovery.Pending()) != 0 || len(h.storage.saves[len(h.storage.saves)-1]) != 0 {
 		t.Fatal("confirmed wake and later reply did not finish recovery")
 	}
 }
 
 func TestGivenUntrustedUPSStatusWhenReadThenLogsContainOnlyKnownFlags(t *testing.T) {
-	// Given
+	// Given a UPS status containing text Evigo does not recognise.
 	h := newHarness(t)
 	var output bytes.Buffer
 	h.monitor.log = slog.New(slog.NewJSONHandler(&output, nil))
 	h.ups.status = "OL private-server-text CHRG private-server-text"
 
-	// When
+	// When a pass reads it.
 	h.pass(0)
 
-	// Then
+	// Then the log shows only known flags and UNKNOWN, and no recovery starts.
 	if strings.Contains(output.String(), "private-server-text") || !strings.Contains(output.String(), "OL UNKNOWN CHRG") {
 		t.Fatalf("unexpected log: %s", output.String())
 	}

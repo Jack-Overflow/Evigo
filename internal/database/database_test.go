@@ -128,7 +128,7 @@ func TestGivenDatabaseFromAnotherSchemaWhenOpenedThenItIsRefused(t *testing.T) {
 func TestGivenIncompatibleSQLiteFileWhenOpenedThenItsBytesAndJournalModeArePreserved(t *testing.T) {
 	for _, kind := range []string{"old Evigo schema", "foreign database"} {
 		t.Run(kind, func(t *testing.T) {
-			// Given
+			// Given a rollback-journal SQLite file from an old Evigo schema or another application.
 			path := filepath.Join(t.TempDir(), "state.db")
 			original, err := Open(path)
 			if err != nil {
@@ -150,10 +150,10 @@ func TestGivenIncompatibleSQLiteFileWhenOpenedThenItsBytesAndJournalModeArePrese
 				t.Fatal(err)
 			}
 
-			// When
+			// When Evigo opens it.
 			opened, err := Open(path)
 
-			// Then
+			// Then it is refused, and its bytes and journal mode are unchanged.
 			if err == nil {
 				opened.Close()
 				t.Fatal("incompatible database accepted")
