@@ -21,28 +21,31 @@ default, serves a read-only status and history API and a health check.
 
 ## Commands
 
-Run everything from the repository root. You need Go 1.26+, ShellCheck, and
-Docker for container checks. All other tools are pinned in the `Makefile` and
-run through `go run`.
+Run everything from the repository root. You need Go 1.26+, Node 24 (LTS) with
+npm, ShellCheck, and Docker for container checks. Go tools are
+pinned in the `Makefile` and run through `go run`; dashboard dependencies are
+pinned in `web/package-lock.json`.
 
-| Command                                                    | Use it to                                                                         |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `make format`                                              | Format Go code with gofumpt.                                                      |
-| `make generate`                                            | Regenerate database code after editing `schema/*.sql` or `queries.sql`.           |
-| `make test`                                                | Run all tests with the race detector.                                             |
-| `make check`                                               | Run everything CI runs: formatting, generated code, lint, scripts, and tests.     |
-| `make security-check`                                      | Scan dependencies for known vulnerabilities (needs network access).               |
-| `make build`                                               | Build `bin/evigo`.                                                                |
-| `go run ./cmd/evigo validate --config config.example.yaml` | Check the example configuration without touching a UPS or the network.            |
-| `docker build --target test -t evigo:test .`               | Run vet and race tests on Linux.                                                  |
-| `docker build -t evigo:local .`                            | Build the runtime image without starting it.                                      |
-| `make release`                                             | Build release archives, installer, and checksums into `dist/`. Publishes nothing. |
+| Command                                                    | Use it to                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `make format`                                              | Format Go code with gofumpt, and the dashboard with ESLint fixes and Prettier.                               |
+| `make generate`                                            | Regenerate database code after editing `schema/*.sql` or `queries.sql`.                                      |
+| `make test`                                                | Run the Go tests with the race detector.                                                                 |
+| `make check`                                               | Run everything CI runs: formatting, generated code, Go and dashboard lint and types, scripts, and all tests. |
+| `make security-check`                                      | Scan Go and npm dependencies for known vulnerabilities (needs network access).                               |
+| `make build`                                               | Build the dashboard into `internal/api/static`, then `bin/evigo`.                                            |
+| `go run ./cmd/evigo validate --config config.example.yaml` | Check the example configuration without touching a UPS or the network.                                       |
+| `docker build --target test -t evigo:test .`               | Run vet and race tests on Linux.                                                                             |
+| `docker build -t evigo:local .`                            | Build the runtime image without starting it.                                                                 |
+| `make release`                                             | Build release archives, installer, and checksums into `dist/`. Publishes nothing.                            |
 
-Focused checks: `make go-lint`, `make shell-check`, `make workflow-check`. Run a
-single test while iterating:
+Focused checks: `make go-lint`, `make frontend-lint`, `make frontend-test`,
+`make shell-check`, `make workflow-check`. Go tests don't need the dashboard
+built. Run a single test while iterating:
 
 ```sh
 go test -race ./internal/recovery/... -run TestGivenWakeSent
+npm --prefix web test -- src/App.test.tsx
 ```
 
 To run a local build with Docker:
@@ -81,21 +84,22 @@ Passes are scheduled from when the previous one started, so time spent inside a
 pass does not lengthen the gap between them. A pass that overruns its interval is
 followed straight away by the next; passes never overlap.
 
-| Path                         | Responsibility                                                           |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| `cmd/evigo/`                 | `run`, `validate`, `version`; builds everything and maps config values.  |
-| `internal/config/`           | Strict YAML loading, credentials, defaults, validation.                  |
-| `internal/devices/`          | A device's identity, ping check, and Wake-on-LAN packet.                 |
-| `internal/nut/`              | NUT protocol client, readings, and a reconnecting reader.                |
-| `internal/recovery/`         | All recovery decisions. No I/O.                                          |
-| `internal/monitor/`          | The loop, the order of I/O within each pass, and the latest snapshot.    |
-| `internal/snapshot/`         | What one pass saw: the snapshot type, its copying, and the power block.  |
-| `internal/api/`              | HTTP status and history API, Host/Origin protection, dashboard files.    |
-| `internal/database/`         | SQLite file checks, locking, schema upgrades, pending progress, history. |
-| `internal/history/`          | History event types shared by recovery, the monitor, database and API.   |
-| `internal/database/queries/` | Generated by sqlc. Never edit by hand.                                   |
-| `deploy/`                    | Installer script and systemd unit.                                       |
-| `.github/`                   | CI (Verify), the manual Release workflow, Dependabot, PR template.       |
+| Path                         | Responsibility                                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| `cmd/evigo/`                 | `run`, `validate`, `version`; builds everything and maps config values.                            |
+| `internal/config/`           | Strict YAML loading, credentials, defaults, validation.                                            |
+| `internal/devices/`          | A device's identity, ping check, and Wake-on-LAN packet.                                           |
+| `internal/nut/`              | NUT protocol client, readings, and a reconnecting reader.                                          |
+| `internal/recovery/`         | All recovery decisions. No I/O.                                                                    |
+| `internal/monitor/`          | The loop, the order of I/O within each pass, and the latest snapshot.                              |
+| `internal/snapshot/`         | What one pass saw: the snapshot type, its copying, and the power block.                            |
+| `internal/api/`              | HTTP status and history API, Host/Origin protection, dashboard files.                              |
+| `internal/database/`         | SQLite file checks, locking, schema upgrades, pending progress, history.                           |
+| `internal/history/`          | History event types shared by recovery, the monitor, database and API.                             |
+| `internal/database/queries/` | Generated by sqlc. Never edit by hand.                                                             |
+| `deploy/`                    | Installer script and systemd unit.                                                                 |
+| `.github/`                   | CI (Verify), the manual Release workflow, Dependabot, PR template.                                 |
+| `web/`                       | The React dashboard. `make build` compiles it into `internal/api/static/`, which is not committed. |
 
 Tests sit beside the code as `*_test.go`. `bin/` and `dist/` are build outputs.
 
@@ -193,6 +197,12 @@ database, or packets must keep every one of them and add a regression test.
 - Use the standard `testing` package. Don't add a BDD or assertion framework.
 - Name every test `TestGiven<Situation>When<Action>Then<Outcome>`, and mark the
   body with `// Given`, `// When` and `// Then` comments.
+- Dashboard tests use Vitest and Testing Library, nested as
+  `describe('Given …')` → `describe('When …')` → `it('Then …')`, each starting
+  with a capital. The Given names what is being exercised (for example "a request
+  for Evigo's status"), each When names a condition it meets ("Evigo is
+  available"), and each `it` checks one outcome. A When's `beforeEach` sets up its
+  condition and then performs the Given.
 - Use simulated UPS readings, a fake ping runner, loopback UDP listeners,
   temporary databases, and documentation addresses such as `192.0.2.10`.
   **Never** point tests at a real UPS or real machines.

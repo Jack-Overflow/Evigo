@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
@@ -255,6 +256,7 @@ func TestGivenMonitorProgressWhenHealthCheckedThenStaleOrStartingLoopsAreUnhealt
 func TestGivenNoBuiltDashboardOrUnknownRouteWhenRequestedThenTheRightErrorIsReturned(t *testing.T) {
 	// Given a server with no dashboard files built.
 	server, _ := testServer("127.0.0.1:8080")
+	server.static = fstest.MapFS{}
 
 	// When the dashboard, an unknown API route and a wrong method are requested.
 	page := get(server, "/", "127.0.0.1:8080")
@@ -390,5 +392,22 @@ func TestGivenHistoryCannotBeReadWhenRequestedThenUnavailableIsReturned(t *testi
 	// Then the error is reported without its details.
 	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "{\"error\":\"unavailable\"}\n" {
 		t.Fatalf("status %d: %q", response.Code, response.Body.String())
+	}
+}
+
+func TestGivenBuiltDashboardWhenPageRequestedThenItIsServedWithSecurityHeaders(t *testing.T) {
+	// Given a server with a built dashboard.
+	server, _ := testServer("127.0.0.1:8080")
+	server.static = fstest.MapFS{"index.html": {Data: []byte("<title>Evigo</title>")}}
+
+	// When the page is requested.
+	page := get(server, "/", "127.0.0.1:8080")
+
+	// Then the page is served with the security headers.
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "<title>Evigo</title>") {
+		t.Fatalf("page %d: %s", page.Code, page.Body)
+	}
+	if page.Header().Get("Content-Security-Policy") == "" || page.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("headers %v", page.Header())
 	}
 }

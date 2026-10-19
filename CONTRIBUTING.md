@@ -4,8 +4,8 @@ Read [AGENTS.md](AGENTS.md) before making changes. It covers the architecture,
 safety rules, code style, tests and release process for both human contributors
 and coding tools.
 
-Use the latest Go 1.26 patch release or newer, ShellCheck, and Docker for
-container checks. Run `make check` before opening a pull request. Dependency
+Use the latest Go 1.26 patch release or newer, Node 24 (LTS) with npm,
+ShellCheck, and Docker for container checks. Run `make check` before opening a pull request. Dependency
 changes also need `make security-check` and updated `THIRD_PARTY_LICENSES` notices.
 
 Keep pull requests focused, describe the problem and resulting behaviour, and

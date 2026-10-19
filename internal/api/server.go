@@ -31,11 +31,20 @@ type Server struct {
 	settings       Settings
 	latestSnapshot func() snapshot.Snapshot
 	readHistory    ReadHistory
+	static         fs.FS
 	now            func() time.Time
 }
 
 func New(settings Settings, latestSnapshot func() snapshot.Snapshot, readHistory ReadHistory) *Server {
-	return &Server{settings: settings, latestSnapshot: latestSnapshot, readHistory: readHistory, now: time.Now}
+	static, _ := fs.Sub(assets, "static")
+
+	return &Server{
+		settings:       settings,
+		latestSnapshot: latestSnapshot,
+		readHistory:    readHistory,
+		static:         static,
+		now:            time.Now,
+	}
 }
 
 func (server *Server) Handler() http.Handler {
@@ -46,7 +55,7 @@ func (server *Server) Handler() http.Handler {
 	routes.HandleFunc("GET /api/", func(writer http.ResponseWriter, _ *http.Request) {
 		writeError(writer, http.StatusNotFound, "not_found")
 	})
-	routes.Handle("/", staticFiles())
+	routes.Handle("/", staticFiles(server.static))
 
 	return server.protect(routes)
 }
@@ -82,8 +91,7 @@ func (server *Server) Serve(ctx context.Context, listener net.Listener) error {
 	return nil
 }
 
-func staticFiles() http.Handler {
-	files, _ := fs.Sub(assets, "static")
+func staticFiles(files fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(files))
 	_, missing := fs.Stat(files, "index.html")
 

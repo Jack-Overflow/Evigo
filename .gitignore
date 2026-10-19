@@ -13,3 +13,5 @@ coverage.out
 *.db-journal
 *.db.lock
 .DS_Store
+/web/node_modules/
+/web/*.tsbuildinfo

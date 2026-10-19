@@ -1,3 +1,11 @@
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web ./
+COPY THIRD_PARTY_LICENSES /src/THIRD_PARTY_LICENSES
+RUN npm run build
+
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH
@@ -7,6 +15,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
+COPY --from=frontend /src/internal/api/static ./internal/api/static
 COPY config.example.yaml VERSION ./
 RUN version="${VERSION:-$(cat VERSION)}" && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$version" -o /evigo ./cmd/evigo
 
