@@ -27,6 +27,7 @@ type harness struct {
 	t        *testing.T
 	recovery *Recovery
 	now      time.Time
+	events   []history.Event
 }
 
 func testSettings() Settings {
@@ -52,9 +53,10 @@ func (h *harness) pass(after time.Duration, reading *nut.Reading, reachability d
 		reading = reading.Copy()
 		reading.At = h.now
 	}
-	due := h.recovery.Update(Pass{At: h.now, Reading: reading, Reachability: map[string]devices.Reachability{"server": reachability}})
+	outcome := h.recovery.Update(Pass{At: h.now, Reading: reading, Reachability: map[string]devices.Reachability{"server": reachability}})
+	h.events = append(h.events, outcome.Events...)
 	var dueIDs []string
-	for _, device := range due {
+	for _, device := range outcome.Wake {
 		dueIDs = append(dueIDs, device.ID)
 	}
 
@@ -386,7 +388,7 @@ func TestGivenPendingRecoveryWhenReadingHasInvalidAgeThenTimersPauseAndStability
 			reading.At = h.now.Add(-age)
 
 			// When a pass arrives with a reading that is too old or from the future.
-			due := h.recovery.Update(Pass{At: h.now, Reading: reading, Reachability: map[string]devices.Reachability{"server": offline}})
+			due := h.recovery.Update(Pass{At: h.now, Reading: reading, Reachability: map[string]devices.Reachability{"server": offline}}).Wake
 
 			// Then nothing is woken or spent, and the full stability delay applies again.
 			if len(due) != 0 || h.recovery.Pending()["server"] != before {
@@ -521,27 +523,23 @@ func TestGivenPowerStateWhenBlockCheckedThenTheReasonMatchesWhyWakingIsNotAllowe
 	}
 }
 
-func TestGivenOutageAndRecoveryWhenEventsTakenThenEachTransitionIsReportedOnce(t *testing.T) {
-	// Given a device that is woken after an outage and then answers.
+func TestGivenOutageAndRecoveryWhenUpdatesRunThenEachTransitionIsReportedOnce(t *testing.T) {
+	// Given a device online on mains.
 	h := newHarness(t, nil)
+
+	// When an outage happens, the device is woken, it answers, and power stays stable.
 	h.outage()
 	h.passesUntilWake(mains, 10)
 	h.pass(pollStep, mains, online)
+	h.pass(pollStep, mains, online)
 
-	// When events are taken twice.
-	events := h.recovery.TakeEvents()
-	again := h.recovery.TakeEvents()
-
-	// Then pending and recovered were reported, with the attempt count, and not repeated.
+	// Then pending and recovered were each reported once, with the attempt count.
 	var kinds []history.Kind
-	for _, event := range events {
+	for _, event := range h.events {
 		kinds = append(kinds, event.Kind)
 	}
-	if !slices.Equal(kinds, []history.Kind{history.DevicePending, history.DeviceRecovered}) || events[1].Details.Attempt != 1 {
-		t.Fatalf("events %+v", events)
-	}
-	if len(again) != 0 {
-		t.Fatalf("events repeated: %+v", again)
+	if !slices.Equal(kinds, []history.Kind{history.DevicePending, history.DeviceRecovered}) || h.events[1].Details.Attempt != 1 {
+		t.Fatalf("events %+v", h.events)
 	}
 }
 
@@ -557,8 +555,7 @@ func TestGivenDeviceThatNeverAnswersWhenTimeoutRunsOutThenGivingUpIsReported(t *
 	}
 
 	// Then giving up is reported.
-	events := h.recovery.TakeEvents()
-	if last := events[len(events)-1]; last.Kind != history.DeviceGaveUp || last.DeviceID != "server" {
-		t.Fatalf("events %+v", events)
+	if last := h.events[len(h.events)-1]; last.Kind != history.DeviceGaveUp || last.DeviceID != "server" {
+		t.Fatalf("events %+v", h.events)
 	}
 }
