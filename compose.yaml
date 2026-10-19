@@ -1,0 +1,17 @@
+services:
+  evigo:
+    image: ghcr.io/jack-overflow/evigo:${EVIGO_VERSION:-latest}
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 15s
+    environment:
+      NUT_USERNAME: ${NUT_USERNAME:-}
+      NUT_PASSWORD: ${NUT_PASSWORD:-}
+    volumes:
+      - ./config.yaml:/etc/evigo/config.yaml:ro
+      - state:/var/lib/evigo
+volumes:
+  state:

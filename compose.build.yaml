@@ -1,0 +1,6 @@
+# Local source builds; production uses compose.yaml on its own.
+services:
+  evigo:
+    build: .
+    image: evigo:local
+    pull_policy: build

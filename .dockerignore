@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.*
+config.yaml
+compose.override.yaml
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+bin
+dist
+docs
+AGENTS.md
+PLAN.md
+assets
+.DS_Store
