@@ -1,12 +1,7 @@
 import type { ReactNode } from 'react';
 import { Server } from 'lucide-react';
-import type { Device, PowerBlock } from '../../api';
-import {
-  deviceStageText,
-  durationText,
-  reachabilityText,
-  type Tone,
-} from '../../lib/wording';
+import type { Device } from '../../api';
+import { durationText, reachabilityText, type Tone } from '../../lib/wording';
 import { Timestamp } from '../Timestamp';
 import { Card } from '../ui/card';
 
@@ -18,16 +13,12 @@ const badgeColours: Record<Tone, string> = {
 
 export function DeviceCard({
   device,
-  block,
   stale,
 }: {
   device: Device;
-  block: PowerBlock | null;
   stale: boolean;
 }) {
-  const reachability = stale
-    ? { label: 'Outdated', tone: 'neutral' as Tone }
-    : reachabilityText(device.reachability);
+  const reachability = reachabilityText(device.reachability, stale);
   const recovery = device.recovery;
 
   return (
@@ -52,11 +43,6 @@ export function DeviceCard({
           {reachability.label}
         </span>
       </div>
-      <p className="text-sm leading-relaxed">
-        {stale
-          ? 'Waiting for an updated status'
-          : deviceStageText(device, block)}
-      </p>
       <dl className="flex flex-col gap-2.5 text-xs text-muted-foreground">
         <Detail label="MAC address">
           <span className="font-mono">{device.mac}</span>

@@ -15,12 +15,7 @@ export function DeviceList({
       </h2>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {status.devices.map((device) => (
-          <DeviceCard
-            key={device.id}
-            device={device}
-            block={status.power.block}
-            stale={stale}
-          />
+          <DeviceCard key={device.id} device={device} stale={stale} />
         ))}
       </div>
     </section>

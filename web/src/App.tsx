@@ -4,18 +4,15 @@ import { AppShell } from './components/AppShell';
 import { Notice } from './components/Notice';
 import { PowerPanel } from './components/power/PowerPanel';
 import { DeviceList } from './components/devices/DeviceList';
+import { connectionNotice } from './lib/wording';
 
 export default function App() {
   const { status, unreachable, stale } = useStatus();
+  const notice = connectionNotice(unreachable, status);
 
   return (
     <AppShell valid={!stale} version={status?.version}>
-      {unreachable && (
-        <Notice>
-          Evigo is not responding.
-          {status && ' Showing the last known state.'}
-        </Notice>
-      )}
+      {notice && <Notice>{notice}</Notice>}
       {status && !status.storage_available && (
         <Notice>
           Evigo cannot save its recovery progress, so waking is paused until it

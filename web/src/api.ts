@@ -40,8 +40,12 @@ export interface Device {
   recovery: DeviceRecovery | null;
 }
 
+export type MonitorState = 'running' | 'stalled' | 'starting';
+
 export interface Status {
   version: string;
+  server_time: string;
+  monitor: MonitorState;
   checked_at: string | null;
   power: Power;
   storage_available: boolean;
@@ -71,13 +75,15 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
     throw new ApiError(0, 'unavailable');
   }
 
-  const body = (await response.json().catch(() => ({}))) as { error?: string };
-
   if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+
     throw new ApiError(response.status, body.error ?? 'unavailable');
   }
 
-  return body as T;
+  return (await response.json()) as T;
 }
 
 export function getStatus(signal?: AbortSignal) {

@@ -1,3 +1,5 @@
+import { gaugeCaption, gaugeValueText } from '../../lib/wording';
+
 const segments = 20;
 const segmentGapPx = 6;
 
@@ -16,8 +18,6 @@ export function BatteryGauge({
     percent == null ? 0 : Math.ceil(percent / (100 / segments));
   const reserveSegments = Math.ceil(minimum / (100 / segments));
   const belowMinimum = valid && percent != null && percent < minimum;
-  const described =
-    percent == null ? 'Unknown charge' : `${Math.round(percent)}% charge`;
 
   function segmentColour(index: number) {
     if (index >= filledSegments) {
@@ -54,7 +54,7 @@ export function BatteryGauge({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent ?? undefined}
-          aria-valuetext={`${described}; waking needs ${minimum}%${valid ? '' : '; last known reading'}`}
+          aria-valuetext={gaugeValueText(percent, minimum, valid)}
           className="flex"
           style={{ gap: segmentGapPx }}
         >
@@ -68,9 +68,7 @@ export function BatteryGauge({
         {minimum > 0 && <ThresholdMarker minimum={minimum} />}
       </div>
       <p className="text-xs text-muted-foreground">
-        {valid
-          ? `Waking needs at least ${minimum}%`
-          : 'Last known value, not a fresh reading'}
+        {gaugeCaption(minimum, valid)}
       </p>
     </div>
   );

@@ -13,6 +13,8 @@ import (
 
 type statusResponse struct {
 	Version          string           `json:"version"`
+	ServerTime       time.Time        `json:"server_time"`
+	Monitor          monitorState     `json:"monitor"`
 	CheckedAt        *time.Time       `json:"checked_at"`
 	Power            powerResponse    `json:"power"`
 	StorageAvailable bool             `json:"storage_available"`
@@ -60,6 +62,8 @@ type deviceRecoveryResponse struct {
 func (server *Server) statusResponse(latest snapshot.Snapshot) statusResponse {
 	response := statusResponse{
 		Version:          server.settings.Version,
+		ServerTime:       server.now(),
+		Monitor:          server.monitorState(latest),
 		CheckedAt:        timeOrNil(latest.CheckedAt),
 		Power:            server.powerResponse(latest),
 		StorageAvailable: latest.StorageOK,

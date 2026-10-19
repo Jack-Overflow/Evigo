@@ -411,3 +411,29 @@ func TestGivenBuiltDashboardWhenPageRequestedThenItIsServedWithSecurityHeaders(t
 		t.Fatalf("headers %v", page.Header())
 	}
 }
+
+func TestGivenMonitorProgressWhenStatusRequestedThenItReportsTheMonitorStateAndServerTime(t *testing.T) {
+	for _, scenario := range []struct {
+		name      string
+		checkedAt time.Time
+		want      monitorState
+	}{
+		{"recent pass", now.Add(-5 * time.Second), monitorRunning},
+		{"stalled loop", now.Add(-5 * time.Minute), monitorStalled},
+		{"no pass yet", time.Time{}, monitorStarting},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			// Given a snapshot whose last pass was recent, long ago, or has not happened.
+			server, fake := testServer("127.0.0.1:8080")
+			fake.latest.CheckedAt = scenario.checkedAt
+
+			// When the status is requested.
+			body := statusBody(t, server)
+
+			// Then the monitor state matches the health check, and the server's time is included.
+			if body.Monitor != scenario.want || !body.ServerTime.Equal(now) {
+				t.Fatalf("monitor %q, server time %v", body.Monitor, body.ServerTime)
+			}
+		})
+	}
+}

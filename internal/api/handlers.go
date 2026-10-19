@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
+	"github.com/Jack-Overflow/Evigo/internal/snapshot"
 )
 
 const (
@@ -15,17 +16,35 @@ const (
 	historyTimeout      = 3 * time.Second
 )
 
-func (server *Server) health(writer http.ResponseWriter, _ *http.Request) {
-	latest := server.latestSnapshot()
+type monitorState string
+
+const (
+	monitorStarting monitorState = "starting"
+	monitorStalled  monitorState = "stalled"
+	monitorRunning  monitorState = "running"
+)
+
+func (server *Server) monitorState(latest snapshot.Snapshot) monitorState {
 	switch {
 	case latest.CheckedAt.IsZero():
-		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": "starting"})
+		return monitorStarting
 	case server.now().Sub(latest.CheckedAt) > server.settings.HealthyWithin:
-		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": "stalled"})
-	default:
-		upsAvailable := latest.PowerBlock(server.now()) != recovery.NoReading
-		writeJSON(writer, http.StatusOK, map[string]any{"status": "ok", "ups_available": upsAvailable})
+		return monitorStalled
 	}
+
+	return monitorRunning
+}
+
+func (server *Server) health(writer http.ResponseWriter, _ *http.Request) {
+	latest := server.latestSnapshot()
+	if state := server.monitorState(latest); state != monitorRunning {
+		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": string(state)})
+
+		return
+	}
+
+	upsAvailable := latest.PowerBlock(server.now()) != recovery.NoReading
+	writeJSON(writer, http.StatusOK, map[string]any{"status": "ok", "ups_available": upsAvailable})
 }
 
 func (server *Server) status(writer http.ResponseWriter, _ *http.Request) {

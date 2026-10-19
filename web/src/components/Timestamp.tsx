@@ -1,5 +1,5 @@
-import { useNow } from '../hooks/useNow';
-import { durationText } from '../lib/wording';
+import { useServerNow } from '../hooks/useServerNow';
+import { ageText } from '../lib/wording';
 import { Tooltip } from './ui/tooltip';
 
 const fullDate = new Intl.DateTimeFormat('en-GB', {
@@ -22,7 +22,7 @@ export function Timestamp({
   prefix?: string;
   empty?: string;
 }) {
-  const now = useNow();
+  const now = useServerNow();
   const date = value ? new Date(value) : undefined;
 
   if (!value || !date || !Number.isFinite(date.getTime())) {
@@ -30,9 +30,9 @@ export function Timestamp({
   }
 
   const full = fullDate.format(date);
-  const seconds = (now - date.getTime()) / 1000;
-  const ago = seconds < 5 ? 'just now' : `${durationText(seconds)} ago`;
-  const age = [prefix, ago].filter(Boolean).join(' ');
+  const age = [prefix, ageText((now - date.getTime()) / 1000) ?? full]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <Tooltip content={full}>

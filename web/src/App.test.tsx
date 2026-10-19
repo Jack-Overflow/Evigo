@@ -7,7 +7,9 @@ import type { Status } from './api';
 function statusWith(overrides: Partial<Status> = {}): Status {
   return {
     version: '0.2.0',
+    server_time: new Date().toISOString(),
     checked_at: new Date().toISOString(),
+    monitor: 'running',
     power: {
       ups: 'main-ups',
       available: true,
@@ -48,6 +50,18 @@ function answerWith(status: Status) {
   );
 }
 
+function timeOutWithFakeTimers() {
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+    const controller = new AbortController();
+    setTimeout(
+      () => controller.abort(new DOMException('Timed out', 'TimeoutError')),
+      milliseconds,
+    );
+
+    return controller.signal;
+  });
+}
+
 function renderApp() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -62,6 +76,7 @@ function renderApp() {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -82,9 +97,9 @@ describe("Given a request for Evigo's status", () => {
       ).toHaveAttribute('aria-valuetext', '100% charge; waking needs 25%');
     });
 
-    it('Then it shows each device and that it is running', async () => {
+    it('Then it shows each device and that it is online', async () => {
       expect(await screen.findByText('NAS')).toBeInTheDocument();
-      expect(screen.getByText('Running')).toBeInTheDocument();
+      expect(screen.getByText('Online')).toBeInTheDocument();
     });
 
     it('Then it shows the version', async () => {
@@ -96,7 +111,7 @@ describe("Given a request for Evigo's status", () => {
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(new Date('2026-01-01T12:00:00Z'));
-      const status = statusWith();
+      const status = statusWith({ server_time: '2026-01-01T12:00:00Z' });
       status.power.block = 'stabilising';
       status.power.wake_allowed_at = '2026-01-01T12:00:20Z';
       answerWith(status);
@@ -135,17 +150,20 @@ describe("Given a request for Evigo's status", () => {
       renderApp();
     });
 
-    it('Then it says a wake was sent', async () => {
-      expect(
-        await screen.findByText(
-          'Wake sent. Waiting for it to come back online.',
-        ),
-      ).toBeInTheDocument();
+    it('Then it shows the wake attempts', async () => {
+      expect(await screen.findByText('Wake attempts')).toBeInTheDocument();
+      expect(screen.getByText('Wake attempts').nextSibling).toHaveTextContent(
+        '2',
+      );
     });
 
-    it('Then it shows the attempts and time left', async () => {
-      expect(await screen.findByText('9m')).toBeInTheDocument();
-      expect(screen.getByText('2')).toBeInTheDocument();
+    it('Then it shows the time left to recover', async () => {
+      expect(
+        await screen.findByText('Time left to recover'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Time left to recover').nextSibling,
+      ).toHaveTextContent('9m');
     });
 
     it('Then the summary counts it as recovering', async () => {
@@ -212,6 +230,176 @@ describe("Given a request for Evigo's status", () => {
 
     it('Then the header shows it is reconnecting', async () => {
       expect(await screen.findByText('Reconnecting')).toBeInTheDocument();
+    });
+  });
+
+  describe("When the browser's clock is behind Evigo's", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-01-01T11:55:00Z'));
+      const status = statusWith({
+        server_time: '2026-01-01T12:00:00Z',
+        checked_at: '2026-01-01T12:00:00Z',
+      });
+      status.power.block = 'stabilising';
+      status.power.wake_allowed_at = '2026-01-01T12:00:20Z';
+      answerWith(status);
+      renderApp();
+    });
+
+    it("Then the countdown uses Evigo's time", async () => {
+      expect(
+        await screen.findByText('Waking is allowed in 20s'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('When the wake time has already passed', () => {
+    beforeEach(() => {
+      const status = statusWith();
+      status.power.block = 'stabilising';
+      status.power.wake_allowed_at = new Date(Date.now() - 2000).toISOString();
+      answerWith(status);
+      renderApp();
+    });
+
+    it('Then it says waking is allowed shortly', async () => {
+      expect(
+        await screen.findByText('Waking is allowed shortly'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("When Evigo's monitor has stalled", () => {
+    beforeEach(() => {
+      answerWith(statusWith({ monitor: 'stalled' }));
+      renderApp();
+    });
+
+    it('Then it says checks have stopped', async () => {
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Evigo has stopped checking the UPS and devices. Showing the last known state.',
+      );
+    });
+
+    it('Then devices are marked as outdated', async () => {
+      expect(await screen.findByText('Outdated')).toBeInTheDocument();
+    });
+  });
+
+  describe('When Evigo has not finished its first check', () => {
+    beforeEach(() => {
+      answerWith(statusWith({ monitor: 'starting' }));
+      renderApp();
+    });
+
+    it('Then it says Evigo is starting', async () => {
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Evigo is starting and has not checked the UPS and devices yet.',
+      );
+    });
+  });
+
+  describe('When a request hangs and a later one succeeds', () => {
+    beforeEach(async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      timeOutWithFakeTimers();
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(Response.json(statusWith()))
+        .mockImplementationOnce(
+          (_url: string, init: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init.signal?.addEventListener('abort', () =>
+                reject(init.signal?.reason),
+              );
+            }),
+        )
+        .mockImplementation(async () => Response.json(statusWith()));
+      vi.stubGlobal('fetch', fetch);
+      renderApp();
+      await screen.findByText('Power is OK');
+      await act(() => vi.advanceTimersByTimeAsync(16000));
+    });
+
+    it('Then the hung request times out and it shows as not responding', async () => {
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Evigo is not responding. Showing the last known state.',
+      );
+    });
+
+    it('Then the next successful update clears the notice', async () => {
+      await act(() => vi.advanceTimersByTimeAsync(6000));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByText('Live')).toBeInTheDocument();
+    });
+  });
+
+  describe('When the headers arrive but the body hangs', () => {
+    beforeEach(async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      timeOutWithFakeTimers();
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(Response.json(statusWith()))
+        .mockImplementation(
+          async (_url: string, init: RequestInit) =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  init.signal?.addEventListener('abort', () =>
+                    controller.error(init.signal?.reason),
+                  );
+                },
+              }),
+              { headers: { 'Content-Type': 'application/json' } },
+            ),
+        );
+      vi.stubGlobal('fetch', fetch);
+      renderApp();
+      await screen.findByText('Power is OK');
+      await act(() => vi.advanceTimersByTimeAsync(16000));
+    });
+
+    it('Then it says Evigo is not responding', async () => {
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Evigo is not responding. Showing the last known state.',
+      );
+    });
+
+    it('Then it keeps the last known state', async () => {
+      expect(await screen.findByText('Power is OK')).toBeInTheDocument();
+      expect(screen.getByText('NAS')).toBeInTheDocument();
+    });
+  });
+
+  describe('When a successful response is not JSON', () => {
+    beforeEach(async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(Response.json(statusWith()))
+        .mockImplementation(
+          async () =>
+            new Response('<html>Sign in</html>', {
+              headers: { 'Content-Type': 'text/html' },
+            }),
+        );
+      vi.stubGlobal('fetch', fetch);
+      renderApp();
+      await screen.findByText('Power is OK');
+      await act(() => vi.advanceTimersByTimeAsync(6000));
+    });
+
+    it('Then it says Evigo is not responding', async () => {
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Evigo is not responding. Showing the last known state.',
+      );
+    });
+
+    it('Then it keeps the last known state', async () => {
+      expect(await screen.findByText('Power is OK')).toBeInTheDocument();
+      expect(screen.getByText('NAS')).toBeInTheDocument();
     });
   });
 });

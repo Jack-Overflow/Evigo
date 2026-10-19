@@ -1,28 +1,31 @@
 import { useQuery } from '@tanstack/react-query';
 import { getStatus } from '../api';
-import { useElapsedNow } from './useNow';
+import { alignWithServerTime } from './useServerNow';
 
 const pollMilliseconds = 5000;
-const staleMilliseconds = 15000;
+const requestTimeoutMilliseconds = 10000;
 
 export function useStatus() {
-  const now = useElapsedNow();
   const query = useQuery({
     queryKey: ['status'],
-    queryFn: async ({ signal }) => ({
-      status: await getStatus(signal),
-      receivedAt: performance.now(),
-    }),
+    queryFn: async ({ signal }) => {
+      const status = await getStatus(
+        AbortSignal.any([
+          signal,
+          AbortSignal.timeout(requestTimeoutMilliseconds),
+        ]),
+      );
+      alignWithServerTime(status.server_time);
+
+      return status;
+    },
     refetchInterval: pollMilliseconds,
   });
-  const stale =
-    query.isError ||
-    !query.data ||
-    now - query.data.receivedAt > staleMilliseconds;
+  const status = query.data;
 
   return {
-    status: query.data?.status,
+    status,
     unreachable: query.isError,
-    stale,
+    stale: query.isError || !status || status.monitor !== 'running',
   };
 }

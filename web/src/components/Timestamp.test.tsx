@@ -48,6 +48,14 @@ describe('Given a timestamp to show', () => {
     });
   });
 
+  describe('When it is more than a minute in the future', () => {
+    beforeEach(() => render(<Timestamp value={secondsBefore(-3600)} />));
+
+    it('Then it shows the full date instead of an age', () => {
+      expect(screen.getByText(/^01 Jan 2026/)).toBeInTheDocument();
+    });
+  });
+
   describe('When there is no timestamp', () => {
     beforeEach(() => render(<Timestamp value={null} empty="No reading yet" />));
 

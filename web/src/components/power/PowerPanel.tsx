@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import type { Status } from '../../api';
-import { useNow } from '../../hooks/useNow';
+import { useServerNow } from '../../hooks/useServerNow';
 import {
-  blockText,
+  powerDetail,
   powerHeadline,
   recoverySummary,
   upsStatusText,
@@ -24,20 +24,14 @@ export function PowerPanel({
   status: Status;
   stale: boolean;
 }) {
-  const now = useNow();
+  const now = useServerNow();
   const { power, settings, devices } = status;
   const headline = powerHeadline(power);
   const recovering = devices.filter((device) => device.recovery).length;
   const wakeAllowedInSeconds = power.wake_allowed_at
-    ? Math.max(0, (new Date(power.wake_allowed_at).getTime() - now) / 1000)
+    ? (new Date(power.wake_allowed_at).getTime() - now) / 1000
     : null;
-  let detail = power.block
-    ? blockText(power.block, settings, wakeAllowedInSeconds)
-    : 'Mains power is on and stable';
-
-  if (stale) {
-    detail = 'Showing the last known state until Evigo answers again';
-  }
+  const detail = powerDetail(power, settings, wakeAllowedInSeconds, stale);
 
   return (
     <section aria-labelledby="power-heading">

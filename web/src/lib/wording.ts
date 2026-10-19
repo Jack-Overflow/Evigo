@@ -1,4 +1,4 @@
-import type { Device, Power, PowerBlock, Reachability, Settings } from '../api';
+import type { Power, PowerBlock, Reachability, Settings, Status } from '../api';
 
 export type Tone = 'good' | 'warn' | 'neutral';
 
@@ -52,7 +52,7 @@ export function blockText(
   wakeAllowedInSeconds: number | null,
 ): string {
   if (block === 'stabilising' && wakeAllowedInSeconds != null) {
-    return `Waking is allowed in ${durationText(wakeAllowedInSeconds)}`;
+    return wakeAllowedText(wakeAllowedInSeconds);
   }
 
   const texts: Record<PowerBlock, string> = {
@@ -64,6 +64,88 @@ export function blockText(
   };
 
   return texts[block];
+}
+
+function wakeAllowedText(seconds: number): string {
+  if (seconds <= 0) {
+    return 'Waking is allowed shortly';
+  }
+
+  return `Waking is allowed in ${durationText(Math.ceil(seconds))}`;
+}
+
+export function powerDetail(
+  power: Power,
+  settings: Settings,
+  wakeAllowedInSeconds: number | null,
+  stale: boolean,
+): string {
+  if (stale) {
+    return 'Showing the last known state until Evigo answers again';
+  }
+
+  if (power.block) {
+    return blockText(power.block, settings, wakeAllowedInSeconds);
+  }
+
+  return 'Mains power is on and stable';
+}
+
+export function ageText(seconds: number): string | null {
+  if (seconds < -60) {
+    return null;
+  }
+
+  if (seconds < 5) {
+    return 'just now';
+  }
+
+  return `${durationText(seconds)} ago`;
+}
+
+export function chargeText(percent: number | null): string {
+  return percent == null ? 'Unknown charge' : `${Math.round(percent)}% charge`;
+}
+
+export function gaugeValueText(
+  percent: number | null,
+  minimum: number,
+  valid: boolean,
+): string {
+  const lastKnown = valid ? '' : '; last known reading';
+
+  return `${chargeText(percent)}; waking needs ${minimum}%${lastKnown}`;
+}
+
+export function gaugeCaption(minimum: number, valid: boolean): string {
+  if (!valid) {
+    return 'Last known value, not a fresh reading';
+  }
+
+  return `Waking needs at least ${minimum}%`;
+}
+
+export function connectionNotice(
+  unreachable: boolean,
+  status: Status | undefined,
+): string | null {
+  if (unreachable && status) {
+    return 'Evigo is not responding. Showing the last known state.';
+  }
+
+  if (unreachable) {
+    return 'Evigo is not responding.';
+  }
+
+  if (status?.monitor === 'stalled') {
+    return 'Evigo has stopped checking the UPS and devices. Showing the last known state.';
+  }
+
+  if (status?.monitor === 'starting') {
+    return 'Evigo is starting and has not checked the UPS and devices yet.';
+  }
+
+  return null;
 }
 
 const upsFlags: Record<string, string> = {
@@ -92,10 +174,17 @@ export function upsStatusText(flags: string[]): string {
   return flags.map((flag) => upsFlags[flag] ?? flag).join(' · ');
 }
 
-export function reachabilityText(reachability: Reachability): {
+export function reachabilityText(
+  reachability: Reachability,
+  stale: boolean,
+): {
   label: string;
   tone: Tone;
 } {
+  if (stale) {
+    return { label: 'Outdated', tone: 'neutral' };
+  }
+
   const texts: Record<Reachability, { label: string; tone: Tone }> = {
     online: { label: 'Online', tone: 'good' },
     offline: { label: 'Not responding', tone: 'warn' },
@@ -103,40 +192,4 @@ export function reachabilityText(reachability: Reachability): {
   };
 
   return texts[reachability];
-}
-
-export function deviceStageText(
-  device: Device,
-  block: PowerBlock | null,
-): string {
-  const recovery = device.recovery;
-
-  if (!recovery) {
-    const idle: Record<Reachability, string> = {
-      online: 'Running',
-      offline:
-        'Not running. Evigo only wakes devices that were on before an outage.',
-      unknown: 'Evigo cannot check this device right now',
-    };
-
-    return idle[device.reachability];
-  }
-
-  if (block) {
-    return 'Recovering. It will be woken once power is ready.';
-  }
-
-  if (device.reachability === 'unknown') {
-    return 'Recovering, but Evigo cannot check it, so it is not woken yet';
-  }
-
-  if (recovery.wake_sent) {
-    return 'Wake sent. Waiting for it to come back online.';
-  }
-
-  if (device.reachability === 'online') {
-    return 'Still answering. Giving it time to finish shutting down.';
-  }
-
-  return 'Off after the outage. It is being woken.';
 }
