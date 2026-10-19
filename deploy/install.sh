@@ -66,7 +66,9 @@ mkdir "$package"
 tar -xzf "$scratch/$archive" -C "$package" "evigo-linux-$arch" config.example.yaml evigo.service LICENSE THIRD_PARTY_LICENSES
 binary="$package/evigo-linux-$arch"
 for file in "evigo-linux-$arch" config.example.yaml evigo.service LICENSE THIRD_PARTY_LICENSES; do
-  [ -f "$package/$file" ] && [ ! -L "$package/$file" ] || fail "release archive is missing a regular $file"
+  if [ ! -f "$package/$file" ] || [ -L "$package/$file" ]; then
+    fail "release archive is missing a regular $file"
+  fi
 done
 "$binary" version >/dev/null || fail 'release binary cannot run on this host'
 

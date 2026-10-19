@@ -24,7 +24,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: '1.26.x'
+          check-latest: true
       - run: make go-lint
       - name: Verify module files
         run: |
@@ -41,7 +42,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: '1.26.x'
+          check-latest: true
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: make shell-check workflow-check
   test-go:
@@ -54,7 +56,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: '1.26.x'
+          check-latest: true
       - run: make test
       - run: go run ./cmd/evigo validate --config config.example.yaml
   security:
@@ -67,7 +70,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: '1.26.x'
+          check-latest: true
       - run: make security-check
   build-native:
     name: Native builds
@@ -81,7 +85,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: '1.26.x'
+          check-latest: true
       - name: Read release version
         id: version
         run: |
