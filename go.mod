@@ -1,4 +1,4 @@
-module evigo
+module github.com/Jack-Overflow/Evigo
 
 go 1.26.0
 

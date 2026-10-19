@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"evigo/internal/devices"
-	"evigo/internal/nut"
-	"evigo/internal/recovery"
+	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/nut"
+	"github.com/Jack-Overflow/Evigo/internal/recovery"
 )
 
 type fakeUPS struct {

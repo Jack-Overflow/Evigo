@@ -23,3 +23,4 @@ Initial release.
 - `run`, `validate` and `version` commands.
 - Docker and static native Linux amd64/arm64 builds, an installer and a systemd unit.
 - CI verifies with the latest Go 1.26 patch release, including security fixes.
+- Public repository module path and contributor and security reporting guides.

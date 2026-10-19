@@ -15,8 +15,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"evigo/internal/database/queries"
-	"evigo/internal/recovery"
+	"github.com/Jack-Overflow/Evigo/internal/database/queries"
+	"github.com/Jack-Overflow/Evigo/internal/recovery"
 )
 
 //go:embed schema.sql

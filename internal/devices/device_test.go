@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"evigo/internal/config"
+	"github.com/Jack-Overflow/Evigo/internal/config"
 )
 
 func exitingWith(code string) Runner {

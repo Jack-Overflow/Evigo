@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"evigo/internal/config"
+	"github.com/Jack-Overflow/Evigo/internal/config"
 )
 
 type Reachability int

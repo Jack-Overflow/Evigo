@@ -188,7 +188,12 @@ move the file aside, and start again.
 
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) for building, testing, code conventions and releasing.
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get started and [AGENTS.md](AGENTS.md)
+for architecture, safety rules and development commands.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately.
 
 ## License
 

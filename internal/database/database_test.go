@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"evigo/internal/recovery"
+	"github.com/Jack-Overflow/Evigo/internal/recovery"
 )
 
 func TestGivenPendingDevicesWhenSavedAndReopenedThenProgressIsRestored(t *testing.T) {
