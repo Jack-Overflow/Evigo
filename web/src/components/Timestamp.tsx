@@ -1,5 +1,5 @@
 import { useServerNow } from '../hooks/useServerNow';
-import { ageText } from '../lib/wording';
+import { durationText } from '../lib/format';
 import { Tooltip } from './ui/tooltip';
 
 const fullDate = new Intl.DateTimeFormat('en-GB', {
@@ -41,4 +41,16 @@ export function Timestamp({
       </time>
     </Tooltip>
   );
+}
+
+function ageText(seconds: number): string | null {
+  if (seconds < -60) {
+    return null;
+  }
+
+  if (seconds < 5) {
+    return 'just now';
+  }
+
+  return `${durationText(seconds)} ago`;
 }

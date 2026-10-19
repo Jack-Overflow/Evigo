@@ -43,11 +43,23 @@ function statusWith(overrides: Partial<Status> = {}): Status {
   };
 }
 
-function answerWith(status: Status) {
+function stubStatusFetch(
+  statusFetch: (url: string, init: RequestInit) => Promise<Response>,
+) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Response.json(status)),
+    vi.fn(async (url: string, init: RequestInit) => {
+      if (url.startsWith('/api/history')) {
+        return Response.json({ events: [], next_before: null });
+      }
+
+      return statusFetch(url, init);
+    }),
   );
+}
+
+function answerWith(status: Status) {
+  stubStatusFetch(async () => Response.json(status));
 }
 
 function timeOutWithFakeTimers() {
@@ -121,6 +133,24 @@ describe("Given a request for Evigo's status", () => {
     it('Then it counts down to when waking is allowed', async () => {
       expect(
         await screen.findByText('Waking is allowed in 20s'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('When the battery is below the minimum', () => {
+    beforeEach(() => {
+      const status = statusWith();
+      status.power.block = 'battery_low';
+      status.power.battery_percent = 10;
+      answerWith(status);
+      renderApp();
+    });
+
+    it('Then it says waking waits for the minimum charge', async () => {
+      expect(
+        await screen.findByText(
+          'Waiting for the battery to reach 25% before waking anything',
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -211,7 +241,7 @@ describe("Given a request for Evigo's status", () => {
         .fn()
         .mockResolvedValueOnce(Response.json(statusWith()))
         .mockRejectedValue(new TypeError('Failed to fetch'));
-      vi.stubGlobal('fetch', fetch);
+      stubStatusFetch(fetch);
       renderApp();
       await screen.findByText('Power is OK');
       await act(() => vi.advanceTimersByTimeAsync(6000));
@@ -226,6 +256,12 @@ describe("Given a request for Evigo's status", () => {
 
     it('Then devices are marked as outdated', async () => {
       expect(await screen.findByText('Outdated')).toBeInTheDocument();
+    });
+
+    it('Then the battery is shown as the last known reading', async () => {
+      expect(
+        await screen.findByText('Last known value, not a fresh reading'),
+      ).toBeInTheDocument();
     });
 
     it('Then the header shows it is reconnecting', async () => {
@@ -316,7 +352,7 @@ describe("Given a request for Evigo's status", () => {
             }),
         )
         .mockImplementation(async () => Response.json(statusWith()));
-      vi.stubGlobal('fetch', fetch);
+      stubStatusFetch(fetch);
       renderApp();
       await screen.findByText('Power is OK');
       await act(() => vi.advanceTimersByTimeAsync(16000));
@@ -355,7 +391,7 @@ describe("Given a request for Evigo's status", () => {
               { headers: { 'Content-Type': 'application/json' } },
             ),
         );
-      vi.stubGlobal('fetch', fetch);
+      stubStatusFetch(fetch);
       renderApp();
       await screen.findByText('Power is OK');
       await act(() => vi.advanceTimersByTimeAsync(16000));
@@ -385,7 +421,7 @@ describe("Given a request for Evigo's status", () => {
               headers: { 'Content-Type': 'text/html' },
             }),
         );
-      vi.stubGlobal('fetch', fetch);
+      stubStatusFetch(fetch);
       renderApp();
       await screen.findByText('Power is OK');
       await act(() => vi.advanceTimersByTimeAsync(6000));

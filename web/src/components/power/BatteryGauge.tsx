@@ -1,4 +1,4 @@
-import { gaugeCaption, gaugeValueText } from '../../lib/wording';
+import { chargeText } from '../../lib/format';
 
 const segments = 20;
 const segmentGapPx = 6;
@@ -99,4 +99,22 @@ function ThresholdMarker({ minimum }: { minimum: number }) {
       </span>
     </div>
   );
+}
+
+function gaugeValueText(
+  percent: number | null,
+  minimum: number,
+  valid: boolean,
+): string {
+  const lastKnown = valid ? '' : '; last known reading';
+
+  return `${chargeText(percent)}; waking needs ${minimum}%${lastKnown}`;
+}
+
+function gaugeCaption(minimum: number, valid: boolean): string {
+  if (!valid) {
+    return 'Last known value, not a fresh reading';
+  }
+
+  return `Waking needs at least ${minimum}%`;
 }

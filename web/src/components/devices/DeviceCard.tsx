@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Server } from 'lucide-react';
 import type { Device } from '../../api';
-import { durationText, reachabilityText, type Tone } from '../../lib/wording';
+import { durationText, reachabilityText, type Tone } from '../../lib/format';
 import { Timestamp } from '../Timestamp';
 import { Card } from '../ui/card';
 

@@ -53,6 +53,39 @@ export interface Status {
   devices: Device[];
 }
 
+export type HistoryKind =
+  | 'started'
+  | 'ups_status'
+  | 'reachability'
+  | 'device_pending'
+  | 'wake_requested'
+  | 'wake_sent'
+  | 'wake_failed'
+  | 'device_recovered'
+  | 'device_gave_up';
+
+export interface HistoryEvent {
+  id: number;
+  at: string;
+  kind: HistoryKind;
+  device_id?: string;
+  details: {
+    version?: string;
+    status?: string;
+    battery_percent?: number;
+    reachability?: Reachability;
+    source?: 'automatic' | 'manual';
+    attempt?: number;
+  };
+}
+
+export interface HistoryPage {
+  events: HistoryEvent[];
+  next_before: number | null;
+}
+
+const requestTimeoutMilliseconds = 10000;
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -62,13 +95,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
+async function request<T>(path: string, cancel: AbortSignal): Promise<T> {
+  const signal = AbortSignal.any([
+    cancel,
+    AbortSignal.timeout(requestTimeoutMilliseconds),
+  ]);
   let response: Response;
 
   try {
     response = await fetch(`/api${path}`, { signal });
   } catch (error) {
-    if (signal?.aborted) {
+    if (signal.aborted) {
       throw error;
     }
 
@@ -86,6 +123,16 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function getStatus(signal?: AbortSignal) {
+export function getStatus(signal: AbortSignal) {
   return request<Status>('/status', signal);
+}
+
+export function getHistory(
+  limit: number,
+  before: number | undefined,
+  signal: AbortSignal,
+) {
+  const olderThan = before ? `&before=${before}` : '';
+
+  return request<HistoryPage>(`/history?limit=${limit}${olderThan}`, signal);
 }

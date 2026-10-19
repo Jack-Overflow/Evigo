@@ -1,12 +1,7 @@
 import type { ReactNode } from 'react';
-import type { Status } from '../../api';
+import type { Power, PowerBlock, Settings, Status } from '../../api';
 import { useServerNow } from '../../hooks/useServerNow';
-import {
-  powerDetail,
-  powerHeadline,
-  recoverySummary,
-  upsStatusText,
-} from '../../lib/wording';
+import { durationText, type Tone, upsStatusText } from '../../lib/format';
 import { Timestamp } from '../Timestamp';
 import { Card } from '../ui/card';
 import { BatteryGauge } from './BatteryGauge';
@@ -77,4 +72,71 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
       <dd className="mt-1 truncate">{children}</dd>
     </div>
   );
+}
+
+function recoverySummary(recovering: number, total: number): string {
+  return recovering
+    ? `${recovering} of ${total} devices recovering`
+    : 'Nothing to recover';
+}
+
+function powerHeadline(power: Power): { title: string; tone: Tone } {
+  if (!power.block) {
+    return { title: 'Power is OK', tone: 'good' };
+  }
+
+  const headlines: Record<PowerBlock, { title: string; tone: Tone }> = {
+    stabilising: { title: 'Mains is back, stabilising', tone: 'neutral' },
+    on_battery: { title: 'Running on battery', tone: 'warn' },
+    battery_low: { title: 'Battery is recharging', tone: 'warn' },
+    unsafe_status: { title: 'UPS reports a problem', tone: 'warn' },
+    no_reading: { title: 'Power status unknown', tone: 'warn' },
+  };
+
+  return headlines[power.block];
+}
+
+function powerDetail(
+  power: Power,
+  settings: Settings,
+  wakeAllowedInSeconds: number | null,
+  stale: boolean,
+): string {
+  if (stale) {
+    return 'Showing the last known state until Evigo answers again';
+  }
+
+  if (power.block) {
+    return blockText(power.block, settings, wakeAllowedInSeconds);
+  }
+
+  return 'Mains power is on and stable';
+}
+
+function blockText(
+  block: PowerBlock,
+  settings: Settings,
+  wakeAllowedInSeconds: number | null,
+): string {
+  if (block === 'stabilising' && wakeAllowedInSeconds != null) {
+    return wakeAllowedText(wakeAllowedInSeconds);
+  }
+
+  const texts: Record<PowerBlock, string> = {
+    stabilising: 'Waiting for mains power to stay on long enough',
+    on_battery: 'Devices are woken once mains power is back and stable',
+    battery_low: `Waiting for the battery to reach ${settings.min_battery_percent}% before waking anything`,
+    unsafe_status: 'Waking is paused until the UPS reports normal mains power',
+    no_reading: 'Evigo cannot get a fresh UPS reading, so waking is paused',
+  };
+
+  return texts[block];
+}
+
+function wakeAllowedText(seconds: number): string {
+  if (seconds <= 0) {
+    return 'Waking is allowed shortly';
+  }
+
+  return `Waking is allowed in ${durationText(Math.ceil(seconds))}`;
 }
