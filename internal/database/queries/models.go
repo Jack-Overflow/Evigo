@@ -4,6 +4,14 @@
 
 package queries
 
+type History struct {
+	ID       int64
+	AtNs     int64
+	Kind     string
+	DeviceID string
+	Details  string
+}
+
 type Pending struct {
 	DeviceID      string
 	Attempts      int64

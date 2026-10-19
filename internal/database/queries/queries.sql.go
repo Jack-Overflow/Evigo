@@ -18,6 +18,28 @@ func (q *Queries) DeletePending(ctx context.Context) error {
 	return err
 }
 
+const insertHistory = `-- name: InsertHistory :exec
+INSERT INTO history (at_ns, kind, device_id, details)
+VALUES (?, ?, ?, ?)
+`
+
+type InsertHistoryParams struct {
+	AtNs     int64
+	Kind     string
+	DeviceID string
+	Details  string
+}
+
+func (q *Queries) InsertHistory(ctx context.Context, arg InsertHistoryParams) error {
+	_, err := q.db.ExecContext(ctx, insertHistory,
+		arg.AtNs,
+		arg.Kind,
+		arg.DeviceID,
+		arg.Details,
+	)
+	return err
+}
+
 const insertPending = `-- name: InsertPending :exec
 INSERT INTO pending (device_id, attempts, last_attempt_ns, time_left_ns, grace_left_ns)
 VALUES (?, ?, ?, ?, ?)
@@ -40,6 +62,82 @@ func (q *Queries) InsertPending(ctx context.Context, arg InsertPendingParams) er
 		arg.GraceLeftNs,
 	)
 	return err
+}
+
+const listHistoryBefore = `-- name: ListHistoryBefore :many
+SELECT id, at_ns, kind, device_id, details FROM history
+WHERE id < ?1
+ORDER BY id DESC
+LIMIT ?2
+`
+
+type ListHistoryBeforeParams struct {
+	BeforeID int64
+	PageSize int64
+}
+
+func (q *Queries) ListHistoryBefore(ctx context.Context, arg ListHistoryBeforeParams) ([]History, error) {
+	rows, err := q.db.QueryContext(ctx, listHistoryBefore, arg.BeforeID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []History
+	for rows.Next() {
+		var i History
+		if err := rows.Scan(
+			&i.ID,
+			&i.AtNs,
+			&i.Kind,
+			&i.DeviceID,
+			&i.Details,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLatestHistory = `-- name: ListLatestHistory :many
+SELECT id, at_ns, kind, device_id, details FROM history
+ORDER BY id DESC
+LIMIT ?
+`
+
+func (q *Queries) ListLatestHistory(ctx context.Context, limit int64) ([]History, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestHistory, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []History
+	for rows.Next() {
+		var i History
+		if err := rows.Scan(
+			&i.ID,
+			&i.AtNs,
+			&i.Kind,
+			&i.DeviceID,
+			&i.Details,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPending = `-- name: ListPending :many
@@ -73,4 +171,13 @@ func (q *Queries) ListPending(ctx context.Context) ([]Pending, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const trimHistory = `-- name: TrimHistory :exec
+DELETE FROM history WHERE history.id <= (SELECT max(newest.id) FROM history AS newest) - ?1
+`
+
+func (q *Queries) TrimHistory(ctx context.Context, keep int64) error {
+	_, err := q.db.ExecContext(ctx, trimHistory, keep)
+	return err
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
 	"github.com/Jack-Overflow/Evigo/internal/snapshot"
@@ -33,7 +34,27 @@ func (fake *fakeSnapshots) read() snapshot.Snapshot {
 	return fake.latest
 }
 
+type fakeHistory struct {
+	page       history.Page
+	err        error
+	limit      int
+	beforeID   int64
+	wasQueried bool
+}
+
+func (fake *fakeHistory) read(_ context.Context, limit int, beforeID int64) (history.Page, error) {
+	fake.limit, fake.beforeID, fake.wasQueried = limit, beforeID, true
+
+	return fake.page, fake.err
+}
+
 func testServer(listen string, allowedHosts ...string) (*Server, *fakeSnapshots) {
+	server, snapshots, _ := testServerWithHistory(listen, allowedHosts...)
+
+	return server, snapshots
+}
+
+func testServerWithHistory(listen string, allowedHosts ...string) (*Server, *fakeSnapshots, *fakeHistory) {
 	mac, _ := net.ParseMAC("02:00:00:00:00:10")
 	fake := &fakeSnapshots{latest: snapshot.Snapshot{
 		CheckedAt: now.Add(-5 * time.Second),
@@ -58,16 +79,17 @@ func testServer(listen string, allowedHosts ...string) (*Server, *fakeSnapshots)
 			},
 		},
 	}}
+	events := &fakeHistory{}
 	server := New(Settings{
 		Listen:        listen,
 		AllowedHosts:  allowedHosts,
 		Version:       "0.2.0",
 		UPS:           "main-ups",
 		HealthyWithin: time.Minute,
-	}, fake.read)
+	}, fake.read, events.read)
 	server.now = func() time.Time { return now }
 
-	return server, fake
+	return server, fake, events
 }
 
 func get(server *Server, target, host string) *httptest.ResponseRecorder {
@@ -297,5 +319,76 @@ func TestGivenRequestInProgressWhenServerStopsThenServeWaitsForTheResponse(t *te
 	}
 	if code := <-responded; code != http.StatusOK {
 		t.Fatalf("client got %d", code)
+	}
+}
+
+func TestGivenHistoryPageWhenRequestedThenEventsAndNextCursorAreReturned(t *testing.T) {
+	// Given two saved events with more before them.
+	server, _, events := testServerWithHistory("127.0.0.1:8080")
+	events.page = history.Page{
+		Events: []history.Event{
+			{ID: 9, At: now, Kind: history.WakeSent, DeviceID: "server", Details: history.Details{Source: history.Automatic, Attempt: 2}},
+			{ID: 8, At: now, Kind: history.UPSStatus, Details: history.Details{Status: "OL"}},
+		},
+		NextBefore: 8,
+	}
+
+	// When a page of two older than event 10 is requested.
+	response := get(server, "/api/history?limit=2&before=10", "127.0.0.1:8080")
+
+	// Then the query is passed on and the events come back with the cursor for the next page.
+	var body historyPageResponse
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+	if events.limit != 2 || events.beforeID != 10 || len(body.Events) != 2 || body.NextBefore == nil || *body.NextBefore != 8 {
+		t.Fatalf("query %d/%d, body %+v", events.limit, events.beforeID, body)
+	}
+	if body.Events[0].Details.Attempt != 2 || body.Events[1].DeviceID != "" {
+		t.Fatalf("events %+v", body.Events)
+	}
+}
+
+func TestGivenLastHistoryPageWhenRequestedThenThereIsNoNextCursor(t *testing.T) {
+	// Given no older events.
+	server, _, _ := testServerWithHistory("127.0.0.1:8080")
+
+	// When history is requested.
+	response := get(server, "/api/history", "127.0.0.1:8080")
+
+	// Then events is an empty list and next_before is null.
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"events":[]`) || !strings.Contains(response.Body.String(), `"next_before":null`) {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+}
+
+func TestGivenInvalidHistoryQueryWhenRequestedThenItIsRejected(t *testing.T) {
+	for _, query := range []string{"limit=0", "limit=201", "limit=abc", "before=-1", "before=x"} {
+		t.Run(query, func(t *testing.T) {
+			// Given a running server.
+			server, _, events := testServerWithHistory("127.0.0.1:8080")
+
+			// When history is requested with this query.
+			response := get(server, "/api/history?"+query, "127.0.0.1:8080")
+
+			// Then it is rejected without reading the database.
+			if response.Code != http.StatusBadRequest || events.wasQueried {
+				t.Fatalf("status %d", response.Code)
+			}
+		})
+	}
+}
+
+func TestGivenHistoryCannotBeReadWhenRequestedThenUnavailableIsReturned(t *testing.T) {
+	// Given a database that fails to read.
+	server, _, events := testServerWithHistory("127.0.0.1:8080")
+	events.err = context.DeadlineExceeded
+
+	// When history is requested.
+	response := get(server, "/api/history", "127.0.0.1:8080")
+
+	// Then the error is reported without its details.
+	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "{\"error\":\"unavailable\"}\n" {
+		t.Fatalf("status %d: %q", response.Code, response.Body.String())
 	}
 }

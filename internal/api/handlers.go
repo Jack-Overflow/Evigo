@@ -1,0 +1,63 @@
+package api
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/Jack-Overflow/Evigo/internal/recovery"
+)
+
+const (
+	defaultHistoryLimit = 50
+	maxHistoryLimit     = 200
+	historyTimeout      = 3 * time.Second
+)
+
+func (server *Server) health(writer http.ResponseWriter, _ *http.Request) {
+	latest := server.latestSnapshot()
+	switch {
+	case latest.CheckedAt.IsZero():
+		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": "starting"})
+	case server.now().Sub(latest.CheckedAt) > server.settings.HealthyWithin:
+		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": "stalled"})
+	default:
+		upsAvailable := latest.PowerBlock(server.now()) != recovery.NoReading
+		writeJSON(writer, http.StatusOK, map[string]any{"status": "ok", "ups_available": upsAvailable})
+	}
+}
+
+func (server *Server) status(writer http.ResponseWriter, _ *http.Request) {
+	writeJSON(writer, http.StatusOK, server.statusResponse(server.latestSnapshot()))
+}
+
+func (server *Server) history(writer http.ResponseWriter, request *http.Request) {
+	limit, limitErr := queryInt(request, "limit", defaultHistoryLimit)
+	beforeID, beforeErr := queryInt(request, "before", 0)
+	if limitErr != nil || beforeErr != nil || limit < 1 || limit > maxHistoryLimit || beforeID < 0 {
+		writeError(writer, http.StatusBadRequest, "invalid_request")
+
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(request.Context(), historyTimeout)
+	defer cancel()
+	page, err := server.readHistory(ctx, limit, int64(beforeID))
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "unavailable")
+
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, historyResponse(page))
+}
+
+func queryInt(request *http.Request, name string, fallback int) (int, error) {
+	value := request.URL.Query().Get(name)
+	if value == "" {
+		return fallback, nil
+	}
+
+	return strconv.Atoi(value)
+}

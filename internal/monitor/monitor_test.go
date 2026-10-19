@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"net"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
 )
@@ -30,9 +32,34 @@ func (ups *fakeUPS) Read(context.Context) (nut.Reading, error) {
 }
 
 type fakeStorage struct {
-	fail       bool
-	saves      []map[string]recovery.Progress
-	beforeSave func(map[string]recovery.Progress)
+	fail         bool
+	saves        []map[string]recovery.Progress
+	beforeSave   func(map[string]recovery.Progress)
+	failHistory  bool
+	historySaves int
+	history      []history.Event
+}
+
+func (storage *fakeStorage) AppendHistory(_ context.Context, events []history.Event) error {
+	if storage.failHistory {
+		return errors.New("disk full")
+	}
+
+	storage.historySaves++
+	storage.history = append(storage.history, events...)
+
+	return nil
+}
+
+func (storage *fakeStorage) kinds(deviceID string) []history.Kind {
+	var kinds []history.Kind
+	for _, event := range storage.history {
+		if event.DeviceID == deviceID {
+			kinds = append(kinds, event.Kind)
+		}
+	}
+
+	return kinds
 }
 
 func (storage *fakeStorage) SavePending(_ context.Context, pending map[string]recovery.Progress) error {
@@ -361,5 +388,85 @@ func TestGivenSnapshotReadWhenCallerChangesItThenTheMonitorsDevicesAreUnaffected
 	// Then the device the monitor pings and wakes is unchanged.
 	if h.monitor.devices[0].WakeAddress != wakeAddress || h.monitor.devices[0].MAC[0] == 0xff {
 		t.Fatal("caller changed the device the monitor wakes")
+	}
+}
+
+func TestGivenOutageAndRecoveryWhenPassesRunThenHistoryRecordsEachStep(t *testing.T) {
+	// Given a device online on mains.
+	h := newHarness(t)
+
+	// When an outage happens, it is woken, and it answers.
+	h.outageThenStablePower()
+	h.pass(10 * time.Second)
+	h.online = true
+	h.pass(10 * time.Second)
+
+	// Then history records each step for the device, and each UPS status change.
+	want := []history.Kind{
+		history.Reachability, history.DevicePending, history.Reachability,
+		history.WakeSent, history.Reachability, history.DeviceRecovered,
+	}
+	if got := h.storage.kinds("server"); !slices.Equal(got, want) {
+		t.Fatalf("history %v, want %v", got, want)
+	}
+	var statuses []string
+	for _, event := range h.storage.history {
+		if event.Kind == history.UPSStatus {
+			statuses = append(statuses, event.Details.Status)
+		}
+	}
+	if !slices.Equal(statuses, []string{"OL", "OB DISCHRG", "OL"}) {
+		t.Fatalf("UPS statuses %v", statuses)
+	}
+}
+
+func TestGivenNothingChangesWhenPassesRunThenHistoryIsOnlyWrittenOnce(t *testing.T) {
+	// Given a healthy UPS and a device that stays online.
+	h := newHarness(t)
+	h.online = true
+
+	// When five passes run.
+	for range 5 {
+		h.pass(10 * time.Second)
+	}
+
+	// Then only the first pass, which saw everything for the first time, writes history.
+	if h.storage.historySaves != 1 {
+		t.Fatalf("history written %d times", h.storage.historySaves)
+	}
+}
+
+func TestGivenHistoryUnavailableWhenPassesRunThenEventsAreKeptAndRecoveryContinues(t *testing.T) {
+	// Given history that cannot be saved.
+	h := newHarness(t)
+	h.storage.failHistory = true
+
+	// When an outage happens, power returns, and history recovers before the wake.
+	h.outageThenStablePower()
+	h.storage.failHistory = false
+	h.pass(10 * time.Second)
+
+	// Then the wake still happens, and the events saved late are not lost.
+	if !h.packetReceived() {
+		t.Fatal("history failure blocked an automatic wake")
+	}
+	if !slices.Contains(h.storage.kinds("server"), history.DevicePending) {
+		t.Fatalf("unsaved events were lost: %v", h.storage.kinds("server"))
+	}
+}
+
+func TestGivenWakeThatFailsToSendWhenPassRunsThenHistoryRecordsTheFailure(t *testing.T) {
+	// Given a device due for waking with an address that cannot be sent to.
+	h := newHarness(t)
+	h.outageThenStablePower()
+	h.monitor.devices[0].WakeAddress = "invalid address"
+
+	// When the next pass runs.
+	h.pass(10 * time.Second)
+
+	// Then history records a failed automatic wake with its attempt number.
+	last := h.storage.history[len(h.storage.history)-1]
+	if last.Kind != history.WakeFailed || last.Details.Source != history.Automatic || last.Details.Attempt != 1 {
+		t.Fatalf("last event %+v", last)
 	}
 }

@@ -11,11 +11,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/api"
 	"github.com/Jack-Overflow/Evigo/internal/config"
 	"github.com/Jack-Overflow/Evigo/internal/database"
 	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/monitor"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
@@ -150,8 +152,13 @@ func run(settings config.Config, stderr io.Writer) error {
 		}
 
 		defer listener.Close()
-		server := api.New(webSettings(settings), loop.Snapshot)
+		server := api.New(webSettings(settings), loop.Snapshot, db.History)
 		services = append(services, func(ctx context.Context) error { return server.Serve(ctx, listener) })
+	}
+
+	started := history.Event{At: time.Now(), Kind: history.Started, Details: history.Details{Version: version}}
+	if err = db.AppendHistory(ctx, []history.Event{started}); err != nil {
+		logger.Error("cannot save history", "error", err)
 	}
 
 	logger.Info("Evigo started", "version", version, "devices", len(configuredDevices), "pending", len(saved), "web", settings.Web.Listen)

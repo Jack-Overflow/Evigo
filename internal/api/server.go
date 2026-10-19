@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"net"
@@ -11,12 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jack-Overflow/Evigo/internal/recovery"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/snapshot"
 )
 
 //go:embed all:static
 var assets embed.FS
+
+type ReadHistory func(ctx context.Context, limit int, beforeID int64) (history.Page, error)
 
 type Settings struct {
 	Listen        string
@@ -29,17 +30,19 @@ type Settings struct {
 type Server struct {
 	settings       Settings
 	latestSnapshot func() snapshot.Snapshot
+	readHistory    ReadHistory
 	now            func() time.Time
 }
 
-func New(settings Settings, latestSnapshot func() snapshot.Snapshot) *Server {
-	return &Server{settings: settings, latestSnapshot: latestSnapshot, now: time.Now}
+func New(settings Settings, latestSnapshot func() snapshot.Snapshot, readHistory ReadHistory) *Server {
+	return &Server{settings: settings, latestSnapshot: latestSnapshot, readHistory: readHistory, now: time.Now}
 }
 
 func (server *Server) Handler() http.Handler {
 	routes := http.NewServeMux()
 	routes.HandleFunc("GET /health", server.health)
 	routes.HandleFunc("GET /api/status", server.status)
+	routes.HandleFunc("GET /api/history", server.history)
 	routes.HandleFunc("GET /api/", func(writer http.ResponseWriter, _ *http.Request) {
 		writeError(writer, http.StatusNotFound, "not_found")
 	})
@@ -79,23 +82,6 @@ func (server *Server) Serve(ctx context.Context, listener net.Listener) error {
 	return nil
 }
 
-func (server *Server) health(writer http.ResponseWriter, _ *http.Request) {
-	latest := server.latestSnapshot()
-	switch {
-	case latest.CheckedAt.IsZero():
-		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": "starting"})
-	case server.now().Sub(latest.CheckedAt) > server.settings.HealthyWithin:
-		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": "stalled"})
-	default:
-		upsAvailable := latest.PowerBlock(server.now()) != recovery.NoReading
-		writeJSON(writer, http.StatusOK, map[string]any{"status": "ok", "ups_available": upsAvailable})
-	}
-}
-
-func (server *Server) status(writer http.ResponseWriter, _ *http.Request) {
-	writeJSON(writer, http.StatusOK, server.statusResponse(server.latestSnapshot()))
-}
-
 func staticFiles() http.Handler {
 	files, _ := fs.Sub(assets, "static")
 	fileServer := http.FileServer(http.FS(files))
@@ -113,15 +99,4 @@ func staticFiles() http.Handler {
 			fileServer.ServeHTTP(writer, request)
 		}
 	})
-}
-
-func writeJSON(writer http.ResponseWriter, statusCode int, value any) {
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(statusCode)
-	json.NewEncoder(writer).Encode(value)
-}
-
-func writeError(writer http.ResponseWriter, statusCode int, code string) {
-	writeJSON(writer, statusCode, map[string]string{"error": code})
 }

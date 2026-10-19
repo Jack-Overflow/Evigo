@@ -6,6 +6,10 @@
   shows UPS status, each machine's reachability, recovery progress, and why
   waking is blocked; `GET /health` reports whether Evigo is checking normally.
   Host and Origin checks stop DNS rebinding and cross-site requests.
+- History of UPS status changes, reachability changes, outages, wakes and
+  results at `GET /api/history`, keeping the newest 10,000 events.
+- Databases from 0.1.0 are checked and upgraded automatically, keeping any
+  recovery in progress.
 
 ## 0.1.0
 

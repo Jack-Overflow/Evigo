@@ -1,9 +1,12 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
 	"github.com/Jack-Overflow/Evigo/internal/snapshot"
 )
@@ -122,6 +125,38 @@ func deviceResponseFor(device snapshot.Device) deviceResponse {
 	return response
 }
 
+type historyPageResponse struct {
+	Events     []historyEventResponse `json:"events"`
+	NextBefore *int64                 `json:"next_before"`
+}
+
+type historyEventResponse struct {
+	ID       int64           `json:"id"`
+	At       time.Time       `json:"at"`
+	Kind     history.Kind    `json:"kind"`
+	DeviceID string          `json:"device_id,omitempty"`
+	Details  history.Details `json:"details"`
+}
+
+func historyResponse(page history.Page) historyPageResponse {
+	response := historyPageResponse{Events: []historyEventResponse{}}
+	for _, event := range page.Events {
+		response.Events = append(response.Events, historyEventResponse{
+			ID:       event.ID,
+			At:       event.At,
+			Kind:     event.Kind,
+			DeviceID: event.DeviceID,
+			Details:  event.Details,
+		})
+	}
+
+	if page.NextBefore != 0 {
+		response.NextBefore = &page.NextBefore
+	}
+
+	return response
+}
+
 func timeOrNil(value time.Time) *time.Time {
 	if value.IsZero() {
 		return nil
@@ -132,4 +167,15 @@ func timeOrNil(value time.Time) *time.Time {
 
 func seconds(duration time.Duration) int {
 	return int(duration.Round(time.Second) / time.Second)
+}
+
+func writeJSON(writer http.ResponseWriter, statusCode int, value any) {
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(statusCode)
+	json.NewEncoder(writer).Encode(value)
+}
+
+func writeError(writer http.ResponseWriter, statusCode int, code string) {
+	writeJSON(writer, statusCode, map[string]string{"error": code})
 }

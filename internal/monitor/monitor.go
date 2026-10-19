@@ -9,10 +9,13 @@ import (
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
 	"github.com/Jack-Overflow/Evigo/internal/snapshot"
 )
+
+const maxUnsavedEvents = 1000
 
 type UPS interface {
 	Read(ctx context.Context) (nut.Reading, error)
@@ -20,6 +23,7 @@ type UPS interface {
 
 type Storage interface {
 	SavePending(ctx context.Context, pending map[string]recovery.Progress) error
+	AppendHistory(ctx context.Context, events []history.Event) error
 }
 
 type Settings struct {
@@ -30,18 +34,20 @@ type Settings struct {
 }
 
 type Monitor struct {
-	settings   Settings
-	ups        UPS
-	devices    []*devices.Device
-	recovery   *recovery.Recovery
-	storage    Storage
-	ping       devices.Runner
-	now        func() time.Time
-	log        *slog.Logger
-	saved      map[string]recovery.Progress
-	storageOK  bool
-	lastStatus string
-	snapshot   atomic.Pointer[snapshot.Snapshot]
+	settings         Settings
+	ups              UPS
+	devices          []*devices.Device
+	recovery         *recovery.Recovery
+	storage          Storage
+	ping             devices.Runner
+	now              func() time.Time
+	log              *slog.Logger
+	saved            map[string]recovery.Progress
+	storageOK        bool
+	lastStatus       string
+	lastReachability map[string]devices.Reachability
+	unsavedEvents    []history.Event
+	snapshot         atomic.Pointer[snapshot.Snapshot]
 }
 
 func New(
@@ -90,11 +96,14 @@ func (monitor *Monitor) Pass(ctx context.Context) time.Duration {
 	reading := monitor.readUPS(ctx)
 	reachability := monitor.pingDevices(ctx)
 	at := monitor.now()
+	monitor.recordReachabilityChanges(at, reachability)
 	due := monitor.recovery.Update(recovery.Pass{At: at, Reading: reading, Reachability: reachability})
+	monitor.unsavedEvents = append(monitor.unsavedEvents, monitor.recovery.TakeEvents()...)
 	if monitor.savePending(ctx) {
 		monitor.sendWakes(ctx, due, reading)
 	}
 
+	monitor.saveHistory(ctx)
 	monitor.publishSnapshot(at, reading, reachability)
 
 	if reading != nil && reading.OnBattery() {
@@ -109,7 +118,7 @@ func (monitor *Monitor) readUPS(ctx context.Context) *nut.Reading {
 	if err != nil {
 		if monitor.lastStatus != "unavailable" {
 			monitor.log.Warn("UPS reading unavailable", "error", err)
-			monitor.lastStatus = "unavailable"
+			monitor.recordUPSStatus("unavailable", nil)
 		}
 
 		return nil
@@ -118,10 +127,38 @@ func (monitor *Monitor) readUPS(ctx context.Context) *nut.Reading {
 	status := reading.LogStatus()
 	if status != monitor.lastStatus {
 		monitor.log.Info("UPS status", "status", status, "battery", reading.Battery)
-		monitor.lastStatus = status
+		monitor.recordUPSStatus(status, &reading.Battery)
 	}
 
 	return &reading
+}
+
+func (monitor *Monitor) recordUPSStatus(status string, batteryPercent *float64) {
+	monitor.lastStatus = status
+	monitor.unsavedEvents = append(monitor.unsavedEvents, history.Event{
+		At:      monitor.now(),
+		Kind:    history.UPSStatus,
+		Details: history.Details{Status: status, BatteryPercent: batteryPercent},
+	})
+}
+
+func (monitor *Monitor) recordReachabilityChanges(at time.Time, reachability map[string]devices.Reachability) {
+	for _, device := range monitor.devices {
+		previous, seen := monitor.lastReachability[device.ID]
+		current := reachability[device.ID]
+		if seen && current == previous {
+			continue
+		}
+
+		monitor.unsavedEvents = append(monitor.unsavedEvents, history.Event{
+			At:       at,
+			Kind:     history.Reachability,
+			DeviceID: device.ID,
+			Details:  history.Details{Reachability: current.String()},
+		})
+	}
+
+	monitor.lastReachability = reachability
 }
 
 func (monitor *Monitor) pingDevices(ctx context.Context) map[string]devices.Reachability {
@@ -178,15 +215,41 @@ func (monitor *Monitor) sendWakes(ctx context.Context, due []*devices.Device, re
 		wakeContext, cancel := context.WithDeadline(ctx, reading.At.Add(monitor.settings.MaxReadingAge))
 		err := device.Wake(wakeContext)
 		cancel()
+		event := history.Event{
+			At:       monitor.now(),
+			Kind:     history.WakeSent,
+			DeviceID: device.ID,
+			Details:  history.Details{Source: history.Automatic, Attempt: monitor.saved[device.ID].Attempts},
+		}
 		if err != nil {
+			event.Kind = history.WakeFailed
+			monitor.unsavedEvents = append(monitor.unsavedEvents, event)
 			monitor.log.Error("wake failed", "device", device.ID, "error", err)
 
 			continue
 		}
 
+		monitor.unsavedEvents = append(monitor.unsavedEvents, event)
 		monitor.recovery.WakeSent(device.ID)
 		monitor.log.Info("wake sent", "device", device.ID, "mac", device.MAC.String())
 	}
+}
+
+func (monitor *Monitor) saveHistory(ctx context.Context) {
+	if len(monitor.unsavedEvents) == 0 {
+		return
+	}
+
+	if err := monitor.storage.AppendHistory(ctx, monitor.unsavedEvents); err != nil {
+		monitor.log.Error("cannot save history", "error", err)
+		if overflow := len(monitor.unsavedEvents) - maxUnsavedEvents; overflow > 0 {
+			monitor.unsavedEvents = monitor.unsavedEvents[overflow:]
+		}
+
+		return
+	}
+
+	monitor.unsavedEvents = nil
 }
 
 func (monitor *Monitor) publishSnapshot(at time.Time, reading *nut.Reading, reachability map[string]devices.Reachability) {

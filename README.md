@@ -154,8 +154,8 @@ devices:
 
 ## Status API
 
-Evigo can serve its current status over HTTP. It's off until you choose an
-address for it:
+Evigo can serve its current status and recent history over HTTP. It's off until
+you choose an address for it:
 
 ```yaml
 web:
@@ -172,10 +172,15 @@ web:
   allowed_hosts: [evigo.example.lan]
 ```
 
-| Request           | Returns                                                                                                    |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GET /api/status` | UPS status, each machine's reachability, recovery progress, and why waking is blocked right now, if it is. |
-| `GET /health`     | `200` while Evigo is checking your UPS and machines normally; useful for uptime monitors.                  |
+| Request                               | Returns                                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET /api/status`                     | UPS status, each machine's reachability, recovery progress, and why waking is blocked right now, if it is. |
+| `GET /api/history?limit=50&before=ID` | Recent events, newest first. Pass `next_before` as `before` for older ones.                                |
+| `GET /health`                         | `200` while Evigo is checking your UPS and machines normally; useful for uptime monitors.                  |
+
+Evigo keeps the newest 10,000 history events and deletes older ones as new ones
+arrive. When you upgrade from 0.1.0, the database is upgraded automatically and
+any recovery in progress is kept.
 
 ## Troubleshooting
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 )
 
@@ -517,5 +518,47 @@ func TestGivenPowerStateWhenBlockCheckedThenTheReasonMatchesWhyWakingIsNotAllowe
 				t.Fatalf("got %q, want %q", got, scenario.want)
 			}
 		})
+	}
+}
+
+func TestGivenOutageAndRecoveryWhenEventsTakenThenEachTransitionIsReportedOnce(t *testing.T) {
+	// Given a device that is woken after an outage and then answers.
+	h := newHarness(t, nil)
+	h.outage()
+	h.passesUntilWake(mains, 10)
+	h.pass(pollStep, mains, online)
+
+	// When events are taken twice.
+	events := h.recovery.TakeEvents()
+	again := h.recovery.TakeEvents()
+
+	// Then pending and recovered were reported, with the attempt count, and not repeated.
+	var kinds []history.Kind
+	for _, event := range events {
+		kinds = append(kinds, event.Kind)
+	}
+	if !slices.Equal(kinds, []history.Kind{history.DevicePending, history.DeviceRecovered}) || events[1].Details.Attempt != 1 {
+		t.Fatalf("events %+v", events)
+	}
+	if len(again) != 0 {
+		t.Fatalf("events repeated: %+v", again)
+	}
+}
+
+func TestGivenDeviceThatNeverAnswersWhenTimeoutRunsOutThenGivingUpIsReported(t *testing.T) {
+	// Given a woken device that never comes back.
+	h := newHarness(t, nil)
+	h.outage()
+	h.passesUntilWake(mains, 10)
+
+	// When its timeout runs out.
+	for range 70 {
+		h.pass(pollStep, mains, offline)
+	}
+
+	// Then giving up is reported.
+	events := h.recovery.TakeEvents()
+	if last := events[len(events)-1]; last.Kind != history.DeviceGaveUp || last.DeviceID != "server" {
+		t.Fatalf("events %+v", events)
 	}
 }

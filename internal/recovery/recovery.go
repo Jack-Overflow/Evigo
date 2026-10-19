@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 )
 
@@ -51,6 +52,7 @@ type Recovery struct {
 	previousPass           time.Time
 	devicesOnline          map[string]bool
 	devicesOnlineCheckedAt time.Time
+	events                 []history.Event
 	log                    *slog.Logger
 }
 
@@ -134,6 +136,13 @@ func (recovery *Recovery) WakeSentTo(deviceID string) bool {
 	return recovery.wakeSent[deviceID]
 }
 
+func (recovery *Recovery) TakeEvents() []history.Event {
+	events := recovery.events
+	recovery.events = nil
+
+	return events
+}
+
 func (recovery *Recovery) StorageFailed() {
 	recovery.safeSince = time.Time{}
 	recovery.wasStable = false
@@ -183,6 +192,7 @@ func (recovery *Recovery) addOutageDevicesToPending(at time.Time) {
 				GraceLeft: recovery.settings.ShutdownGracePeriod,
 			}
 			recovery.log.Info("device will be woken after the outage", "device", device.ID)
+			recovery.events = append(recovery.events, history.Event{At: at, Kind: history.DevicePending, DeviceID: device.ID})
 		}
 	}
 }
@@ -216,10 +226,16 @@ func (recovery *Recovery) updatePendingDevices(pass Pass) []*devices.Device {
 			delete(recovery.pending, device.ID)
 			delete(recovery.wakeSent, device.ID)
 			recovery.log.Info("device is back online", "device", device.ID, "attempts", progress.Attempts)
+			recovery.events = append(recovery.events, history.Event{
+				At: pass.At, Kind: history.DeviceRecovered, DeviceID: device.ID, Details: history.Details{Attempt: progress.Attempts},
+			})
 		case progress.TimeLeft == 0:
 			delete(recovery.pending, device.ID)
 			delete(recovery.wakeSent, device.ID)
 			recovery.log.Warn("device did not come back in time", "device", device.ID, "attempts", progress.Attempts)
+			recovery.events = append(recovery.events, history.Event{
+				At: pass.At, Kind: history.DeviceGaveUp, DeviceID: device.ID, Details: history.Details{Attempt: progress.Attempts},
+			})
 		case reachability == devices.Offline && recovery.retryDue(progress, pass.At):
 			progress.Attempts++
 			progress.LastAttempt = pass.At
