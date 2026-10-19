@@ -11,7 +11,7 @@ changes also need `make security-check` and updated `THIRD_PARTY_LICENSES` notic
 Keep pull requests focused, describe the problem and resulting behaviour, and
 include the checks you ran. Add regression tests for behaviour changes and
 update the user documentation when needed. Tests must use fakes and loopback
-listeners, never a live UPS or real machines.
+listeners, never a live UPS or real devices.
 
 Use GitHub issues for bugs and feature requests. Remove credentials, private
 hostnames, device addresses and deployment details from anything you share.

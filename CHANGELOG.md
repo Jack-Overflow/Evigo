@@ -3,7 +3,7 @@
 ## 0.2.0
 
 - Optional read-only status API, turned on with `web.listen`: `GET /api/status`
-  shows UPS status, each machine's reachability, recovery progress, and why
+  shows UPS status, each device's reachability, recovery progress, and why
   waking is blocked; `GET /health` reports whether Evigo is checking normally.
   Host and Origin checks stop DNS rebinding and cross-site requests.
 - History of UPS status changes, reachability changes, outages, wakes and
@@ -20,7 +20,7 @@ Initial release.
   power has been safe and stable and the battery is above the threshold. Devices
   already off stay off.
 - Retries on an interval, a per-device timeout that only counts while waking is
-  allowed, and a shutdown grace period so a machine still shutting down is not
+  allowed, and a shutdown grace period so a device still shutting down is not
   counted as recovered.
 - Pending devices saved in SQLite before any packet is sent and resumed after a
   restart.

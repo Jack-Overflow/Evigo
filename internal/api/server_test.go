@@ -114,13 +114,13 @@ func statusBody(t *testing.T, server *Server) statusResponse {
 }
 
 func TestGivenRunningMonitorWhenStatusRequestedThenPowerDevicesAndSettingsAreReported(t *testing.T) {
-	// Given a recent pass with fresh, stable mains power, one idle machine and one pending.
+	// Given a recent pass with fresh, stable mains power, one idle device and one pending.
 	server, _ := testServer("127.0.0.1:8080")
 
 	// When the status is requested.
 	body := statusBody(t, server)
 
-	// Then power, both machines, their recovery progress and the settings are reported.
+	// Then power, both devices, their recovery progress and the settings are reported.
 	power := body.Power
 	if !power.Available || power.Block != nil || *power.BatteryPercent != 80 || strings.Join(power.Status, " ") != "OL CHRG" {
 		t.Fatalf("power %+v", power)

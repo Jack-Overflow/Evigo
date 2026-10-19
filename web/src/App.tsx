@@ -1,37 +1,39 @@
 import { LoaderCircle } from 'lucide-react';
 import { useStatus } from './hooks/useStatus';
+import { AppShell } from './components/AppShell';
+import { Notice } from './components/Notice';
+import { PowerPanel } from './components/power/PowerPanel';
+import { DeviceList } from './components/devices/DeviceList';
 
 export default function App() {
-  const { status, unreachable } = useStatus();
+  const { status, unreachable, stale } = useStatus();
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6">
-      <header className="flex items-baseline justify-between gap-4">
-        <h1 className="brand-wordmark text-3xl">evigo</h1>
-        {status && (
-          <span className="text-sm text-muted-foreground">
-            v{status.version}
-          </span>
-        )}
-      </header>
-      <main>
-        {unreachable && (
-          <p role="alert" className="text-warning">
-            Evigo is not responding.
-          </p>
-        )}
-        {!status && !unreachable && (
-          <p className="flex items-center gap-3 text-muted-foreground">
-            <LoaderCircle className="animate-spin" size={20} />
-            Connecting to Evigo…
-          </p>
-        )}
-        {status && (
-          <p className="text-muted-foreground">
-            Watching {status.power.ups} and {status.devices.length} machines.
-          </p>
-        )}
-      </main>
-    </div>
+    <AppShell valid={!stale} version={status?.version}>
+      {unreachable && (
+        <Notice>
+          Evigo is not responding.
+          {status && ' Showing the last known state.'}
+        </Notice>
+      )}
+      {status && !status.storage_available && (
+        <Notice>
+          Evigo cannot save its recovery progress, so waking is paused until it
+          can.
+        </Notice>
+      )}
+      {!status && !unreachable && (
+        <p className="flex items-center gap-3 py-20 text-muted-foreground">
+          <LoaderCircle className="animate-spin" size={20} />
+          Connecting to Evigo…
+        </p>
+      )}
+      {status && (
+        <>
+          <PowerPanel status={status} stale={stale} />
+          <DeviceList status={status} stale={stale} />
+        </>
+      )}
+    </AppShell>
   );
 }

@@ -6,12 +6,12 @@ before making a change. [README.md](README.md) is the user documentation.
 ## What Evigo is
 
 Evigo watches one UPS through Network UPS Tools (NUT). When the UPS goes on
-battery, it remembers which machines were online. Once mains power is back,
-stable, and the battery is charged enough, it wakes those machines with
+battery, it remembers which devices were online. Once mains power is back,
+stable, and the battery is charged enough, it wakes those devices with
 Wake-on-LAN, retrying until each one answers ping or its timeout runs out.
 
-Evigo only ever turns machines on. It never shuts anything down and never sends
-UPS commands. Waking a machine at the wrong moment is worse than not waking it,
+Evigo only ever turns devices on. It never shuts anything down and never sends
+UPS commands. Waking a device at the wrong moment is worse than not waking it,
 so every change must keep the [safety rules](#safety-rules).
 
 It is one Go binary with SQLite built in (pure Go, `CGO_ENABLED=0`), configured
@@ -30,7 +30,7 @@ pinned in `web/package-lock.json`.
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `make format`                                              | Format Go code with gofumpt, and the dashboard with ESLint fixes and Prettier.                               |
 | `make generate`                                            | Regenerate database code after editing `schema/*.sql` or `queries.sql`.                                      |
-| `make test`                                                | Run the Go tests with the race detector.                                                                 |
+| `make test`                                                | Run the Go tests with the race detector.                                                                     |
 | `make check`                                               | Run everything CI runs: formatting, generated code, Go and dashboard lint and types, scripts, and all tests. |
 | `make security-check`                                      | Scan Go and npm dependencies for known vulnerabilities (needs network access).                               |
 | `make build`                                               | Build the dashboard into `internal/api/static`, then `bin/evigo`.                                            |
@@ -144,7 +144,7 @@ Tests sit beside the code as `*_test.go`. `bin/` and `dist/` are build outputs.
 
 ## Safety rules
 
-These protect real machines. Any change touching recovery, the loop, the
+These protect real devices. Any change touching recovery, the loop, the
 database, or packets must keep every one of them and add a regression test.
 
 - Missing, malformed, contradictory, or unsafe UPS readings never allow a wake.
@@ -154,12 +154,12 @@ database, or packets must keep every one of them and add a regression test.
   or expired reading, a restart, a storage failure, or a gap between passes longer
   than `nut.max_reading_age` starts the delay again. Backward time observations
   also reset the delay. Unobserved intervals never consume timeout or grace.
-- Only machines that answered ping on mains just before the outage are woken.
-  Machines already off stay off, and a normal startup with nothing pending wakes
+- Only devices that answered ping on mains just before the outage are woken.
+  Devices already off stay off, and a normal startup with nothing pending wakes
   nothing.
 - Only an offline ping result triggers a wake; an unknown result never does.
-- Before a machine has been woken, an online reply only counts as recovered once
-  the shutdown grace period is used up, so a machine still shutting down isn't
+- Before a device has been woken, an online reply only counts as recovered once
+  the shutdown grace period is used up, so a device still shutting down isn't
   missed. A recorded attempt alone is not a successful send. Each outage renews
   grace, and a restart honours remaining grace without assuming an earlier
   recorded attempt was sent.
@@ -205,7 +205,7 @@ database, or packets must keep every one of them and add a regression test.
   condition and then performs the Given.
 - Use simulated UPS readings, a fake ping runner, loopback UDP listeners,
   temporary databases, and documentation addresses such as `192.0.2.10`.
-  **Never** point tests at a real UPS or real machines.
+  **Never** point tests at a real UPS or real devices.
 - Assert observable outcomes (what was woken, saved, or refused), not
   implementation details.
 - Add a focused regression for any change to recovery, reconnecting,
@@ -248,7 +248,7 @@ behaviour changes, update the docs, and fix findings instead of weakening checks
   or package settings,
 - starting or restarting a live deployment, changing local deployment
   configuration, or deleting persistent recovery data,
-- changing configuration keys, database compatibility, or when machines are
+- changing configuration keys, database compatibility, or when devices are
   woken beyond what the change was for,
 - adding dependencies.
 
@@ -256,6 +256,6 @@ behaviour changes, update the docs, and fix findings instead of weakening checks
 
 - commit or expose credentials or private deployment data (`.env`,
   `config.yaml`, `compose.override.yaml`, database files),
-- use a live UPS or real machines as test targets,
+- use a live UPS or real devices as test targets,
 - overwrite unrelated changes in the working tree,
 - hand-edit generated code, dependencies, or build outputs.
