@@ -120,30 +120,10 @@ func run(settings config.Config, stderr io.Writer) error {
 		return err
 	}
 
-	ups := nut.NewReader(nut.Settings{
-		Host:           settings.NUT.Host,
-		Port:           settings.NUT.Port,
-		UPS:            settings.NUT.UPS,
-		Username:       settings.NUT.Username,
-		Password:       settings.NUT.Password,
-		ConnectTimeout: settings.NUT.ConnectTimeout,
-		ReadTimeout:    settings.NUT.ReadTimeout,
-	}, nil)
+	ups := nut.NewReader(nutSettings(settings), nil)
 	defer ups.Close()
-	deviceRecovery := recovery.New(recovery.Settings{
-		StablePowerDelay:    settings.Recovery.StablePowerDelay,
-		ShutdownGracePeriod: settings.Recovery.ShutdownGracePeriod,
-		MinBatteryPercent:   settings.Recovery.MinBatteryPercent,
-		RetryInterval:       settings.Recovery.RetryInterval,
-		DeviceTimeout:       settings.Recovery.DeviceTimeout,
-		MaxReadingAge:       settings.NUT.MaxReadingAge,
-	}, configuredDevices, saved, logger)
-	loop := monitor.New(monitor.Settings{
-		PollInterval:          settings.Poll.Interval,
-		OnBatteryPollInterval: settings.Poll.OnBatteryInterval,
-		PingTimeout:           settings.Probe.Timeout,
-		MaxReadingAge:         settings.NUT.MaxReadingAge,
-	}, ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, logger)
+	deviceRecovery := recovery.New(recoverySettings(settings), configuredDevices, saved, logger)
+	loop := monitor.New(monitorSettings(settings), ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, logger)
 	services := []func(context.Context) error{loop.Run}
 	if settings.Web.Listen != "" {
 		listener, err := net.Listen("tcp", settings.Web.Listen)
@@ -156,14 +136,49 @@ func run(settings config.Config, stderr io.Writer) error {
 		services = append(services, func(ctx context.Context) error { return server.Serve(ctx, listener) })
 	}
 
-	started := history.Event{At: time.Now(), Kind: history.Started, Details: history.Details{Version: version}}
-	if err = db.AppendHistory(ctx, []history.Event{started}); err != nil {
-		logger.Error("cannot save history", "error", err)
-	}
-
+	recordStarted(ctx, db, logger)
 	logger.Info("Evigo started", "version", version, "devices", len(configuredDevices), "pending", len(saved), "web", settings.Web.Listen)
 
 	return runAllUntilOneStops(ctx, services)
+}
+
+func recordStarted(ctx context.Context, db *database.DB, logger *slog.Logger) {
+	started := history.Event{At: time.Now(), Kind: history.Started, Details: history.Details{Version: version}}
+	if err := db.AppendHistory(ctx, []history.Event{started}); err != nil {
+		logger.Error("cannot save history", "error", err)
+	}
+}
+
+func nutSettings(settings config.Config) nut.Settings {
+	return nut.Settings{
+		Host:           settings.NUT.Host,
+		Port:           settings.NUT.Port,
+		UPS:            settings.NUT.UPS,
+		Username:       settings.NUT.Username,
+		Password:       settings.NUT.Password,
+		ConnectTimeout: settings.NUT.ConnectTimeout,
+		ReadTimeout:    settings.NUT.ReadTimeout,
+	}
+}
+
+func recoverySettings(settings config.Config) recovery.Settings {
+	return recovery.Settings{
+		StablePowerDelay:    settings.Recovery.StablePowerDelay,
+		ShutdownGracePeriod: settings.Recovery.ShutdownGracePeriod,
+		MinBatteryPercent:   settings.Recovery.MinBatteryPercent,
+		RetryInterval:       settings.Recovery.RetryInterval,
+		DeviceTimeout:       settings.Recovery.DeviceTimeout,
+		MaxReadingAge:       settings.NUT.MaxReadingAge,
+	}
+}
+
+func monitorSettings(settings config.Config) monitor.Settings {
+	return monitor.Settings{
+		PollInterval:          settings.Poll.Interval,
+		OnBatteryPollInterval: settings.Poll.OnBatteryInterval,
+		PingTimeout:           settings.Probe.Timeout,
+		MaxReadingAge:         settings.NUT.MaxReadingAge,
+	}
 }
 
 func webSettings(settings config.Config) api.Settings {
