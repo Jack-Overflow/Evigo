@@ -80,11 +80,12 @@ func (monitor *Monitor) Snapshot() snapshot.Snapshot {
 
 func (monitor *Monitor) Run(ctx context.Context) error {
 	for {
+		started := time.Now()
 		interval := monitor.Pass(ctx)
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(interval):
+		case <-time.After(max(0, interval-time.Since(started))):
 		}
 	}
 }

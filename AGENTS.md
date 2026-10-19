@@ -77,6 +77,10 @@ Each loop pass, in `internal/monitor`, runs in a fixed order:
 6. Save the pass's history events, if there are any.
 7. Replace the single status snapshot that the API reads.
 
+Passes are scheduled from when the previous one started, so time spent inside a
+pass does not lengthen the gap between them. A pass that overruns its interval is
+followed straight away by the next; passes never overlap.
+
 | Path                         | Responsibility                                                           |
 | ---------------------------- | ------------------------------------------------------------------------ |
 | `cmd/evigo/`                 | `run`, `validate`, `version`; builds everything and maps config values.  |

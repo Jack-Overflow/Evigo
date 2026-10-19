@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -468,5 +469,80 @@ func TestGivenWakeThatFailsToSendWhenPassRunsThenHistoryRecordsTheFailure(t *tes
 	last := h.storage.history[len(h.storage.history)-1]
 	if last.Kind != history.WakeFailed || last.Details.Source != history.Automatic || last.Details.Attempt != 1 {
 		t.Fatalf("last event %+v", last)
+	}
+}
+
+type scriptedUPS struct {
+	passes atomic.Int32
+}
+
+func (ups *scriptedUPS) Read(context.Context) (nut.Reading, error) {
+	status := "OL"
+	if ups.passes.Add(1) == 2 {
+		status = "OB DISCHRG"
+	}
+
+	return nut.Reading{At: time.Now(), Status: status, Battery: 100}, nil
+}
+
+type slowFailingHistory struct {
+	delay time.Duration
+}
+
+func (storage slowFailingHistory) SavePending(context.Context, map[string]recovery.Progress) error {
+	return nil
+}
+
+func (storage slowFailingHistory) AppendHistory(context.Context, []history.Event) error {
+	time.Sleep(storage.delay)
+
+	return errors.New("database busy")
+}
+
+func TestGivenHistoryThatIsSlowAndFailsEveryPassWhenLoopRunsThenRecoveryStillWakesOnTime(t *testing.T) {
+	// Given passes every 100ms, readings valid for 150ms, and history that takes 80ms to fail every pass.
+	listener, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	mac, _ := net.ParseMAC("02:00:00:00:00:10")
+	configured := []*devices.Device{{ID: "server", Host: "192.0.2.10", MAC: mac, WakeAddress: listener.LocalAddr().String()}}
+	ups := &scriptedUPS{}
+	ping := func(ctx context.Context, _ string, _ ...string) error {
+		if ups.passes.Load() <= 1 {
+			return nil
+		}
+
+		return exec.CommandContext(ctx, "sh", "-c", "exit 1").Run()
+	}
+	log := slog.New(slog.DiscardHandler)
+	deviceRecovery := recovery.New(recovery.Settings{
+		StablePowerDelay:    200 * time.Millisecond,
+		ShutdownGracePeriod: time.Minute,
+		MinBatteryPercent:   25,
+		RetryInterval:       time.Minute,
+		DeviceTimeout:       time.Minute,
+		MaxReadingAge:       150 * time.Millisecond,
+	}, configured, nil, log)
+	settings := Settings{PollInterval: 100 * time.Millisecond, OnBatteryPollInterval: 100 * time.Millisecond, PingTimeout: time.Second, MaxReadingAge: 150 * time.Millisecond}
+	loop := New(settings, ups, configured, deviceRecovery, slowFailingHistory{delay: 80 * time.Millisecond}, map[string]recovery.Progress{}, ping, log)
+
+	// When the loop runs through an outage and power returns with the device off.
+	ctx, stop := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() {
+		loop.Run(ctx)
+		close(stopped)
+	}()
+	defer func() {
+		stop()
+		<-stopped
+	}()
+
+	// Then the device is still woken, because slow history no longer stretches the gap between passes.
+	listener.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err = listener.ReadFrom(make([]byte, 200)); err != nil {
+		t.Fatalf("no wake packet: %v", err)
 	}
 }
