@@ -1,0 +1,15 @@
+/bin/
+/dist/
+/config.yaml
+/.env
+/.env.*
+!/.env.example
+/compose.override.yaml
+*.test
+coverage.out
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.db.lock
+.DS_Store

@@ -1,0 +1,5 @@
+# Deployment and release changes need maintainer review.
+/.github/ @Jack-Overflow
+/deploy/ @Jack-Overflow
+/Dockerfile @Jack-Overflow
+/VERSION @Jack-Overflow

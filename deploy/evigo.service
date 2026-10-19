@@ -1,0 +1,25 @@
+[Unit]
+Description=Evigo UPS recovery daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=evigo
+Group=evigo
+StateDirectory=evigo
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/evigo run --config /etc/evigo/config.yaml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

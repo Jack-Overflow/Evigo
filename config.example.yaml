@@ -1,0 +1,48 @@
+log:
+  level: info
+state:
+  path: /var/lib/evigo/evigo.db
+nut:
+  host: nut.example.lan
+  port: 3493
+  ups: main-ups
+  # Omit both fields for anonymous read-only access.
+  # username: "${NUT_USERNAME}"
+  # password: "${NUT_PASSWORD}"
+  # Alternatively use password_file: /run/secrets/nut_password
+  connect_timeout: 5s
+  read_timeout: 5s
+  # Each packet must finish before its reading reaches this age.
+  # A gap between checks longer than this restarts the stability delay.
+  max_reading_age: 30s
+poll:
+  interval: 10s
+  on_battery_interval: 2s
+recovery:
+  stable_power_delay: 30s
+  # A device answering ping within this period of stable power may still be
+  # shutting down, so it is not yet treated as recovered unless a wake was sent.
+  # Failed/skipped sends do not bypass grace; another outage renews it.
+  shutdown_grace_period: 2m
+  min_battery_percent: 25
+  retry_interval: 30s
+  # Counts only while waking is allowed.
+  device_timeout: 10m
+probe:
+  timeout: 2s
+wol:
+  broadcast: 255.255.255.255
+  port: 9
+devices:
+  - id: server
+    name: Home server
+    host: 192.0.2.10
+    mac: '02:00:00:00:00:10'
+    # Set a directed broadcast if required.
+    # wol:
+    #   broadcast: 192.0.2.255
+    #   port: 9
+  - id: storage
+    name: Storage server
+    host: 192.0.2.11
+    mac: '02:00:00:00:00:11'
