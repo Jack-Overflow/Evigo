@@ -38,13 +38,13 @@ func (server *Server) monitorState(latest snapshot.Snapshot) monitorState {
 func (server *Server) health(writer http.ResponseWriter, _ *http.Request) {
 	latest := server.latestSnapshot()
 	if state := server.monitorState(latest); state != monitorRunning {
-		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{"status": string(state)})
+		writeJSON(writer, http.StatusServiceUnavailable, map[string]monitorState{"monitor": state})
 
 		return
 	}
 
 	upsAvailable := latest.PowerBlock(server.now()) != recovery.NoReading
-	writeJSON(writer, http.StatusOK, map[string]any{"status": "ok", "ups_available": upsAvailable})
+	writeJSON(writer, http.StatusOK, map[string]any{"monitor": monitorRunning, "ups_available": upsAvailable})
 }
 
 func (server *Server) status(writer http.ResponseWriter, _ *http.Request) {

@@ -233,9 +233,9 @@ func TestGivenMonitorProgressWhenHealthCheckedThenStaleOrStartingLoopsAreUnhealt
 		wantCode  int
 		wantBody  string
 	}{
-		{"recent pass", now.Add(-5 * time.Second), http.StatusOK, `"status":"ok"`},
-		{"stalled loop", now.Add(-5 * time.Minute), http.StatusServiceUnavailable, `"status":"stalled"`},
-		{"no pass yet", time.Time{}, http.StatusServiceUnavailable, `"status":"starting"`},
+		{"recent pass", now.Add(-5 * time.Second), http.StatusOK, `"monitor":"running"`},
+		{"stalled loop", now.Add(-5 * time.Minute), http.StatusServiceUnavailable, `"monitor":"stalled"`},
+		{"no pass yet", time.Time{}, http.StatusServiceUnavailable, `"monitor":"starting"`},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			// Given the last pass was recent, long ago, or has not happened yet.
