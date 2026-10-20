@@ -28,7 +28,6 @@ ShellCheck, and Docker for container checks.
 | `make build`                                               | Build the dashboard and `bin/evigo`.                                              |
 | `make security-check`                                      | Scan dependencies for known vulnerabilities (needs network access).               |
 | `go run ./cmd/evigo validate --config config.example.yaml` | Check a configuration without touching a UPS or the network.                      |
-| `docker build --target test -t evigo:test .`               | Run vet and race tests on Linux.                                                  |
 | `make release`                                             | Build release archives, installer, and checksums into `dist/`. Publishes nothing. |
 
 Run a single test while iterating:

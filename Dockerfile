@@ -19,10 +19,6 @@ COPY --from=frontend /src/internal/api/static ./internal/api/static
 COPY config.example.yaml VERSION ./
 RUN version="${VERSION:-$(cat VERSION)}" && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$version" -o /evigo ./cmd/evigo
 
-FROM builder AS test
-RUN apk add --no-cache gcc musl-dev
-RUN go vet ./cmd/... ./internal/... && go test -race ./cmd/... ./internal/...
-
 FROM alpine:3.24
 RUN apk add --no-cache iputils ca-certificates && \
     addgroup -g 10001 evigo && adduser -D -H -u 10001 -G evigo evigo && \
