@@ -181,7 +181,8 @@ current.
 
 There is **no login**. Anyone who can reach it can see your UPS and devices, so
 keep it on `127.0.0.1` or put it behind a reverse proxy that adds a login and
-HTTPS. If you reach it by a hostname, list that name so Evigo accepts it:
+HTTPS. IP addresses and `localhost` always work. If you also reach it by a
+hostname, list that name, without a port, so Evigo accepts it:
 
 ```yaml
 web:

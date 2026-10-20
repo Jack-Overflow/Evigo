@@ -36,8 +36,8 @@ web:
   # It has no login: keep it on loopback or behind a reverse proxy that adds one.
   listen: ''
   # listen: 127.0.0.1:8080
-  # Hostnames the dashboard is reached by, for example through a reverse proxy.
-  # Without this, only IP addresses and localhost are accepted.
+  # Hostnames the dashboard is reached by, for example through a reverse proxy,
+  # without a port. IP addresses and localhost are always accepted.
   # allowed_hosts: [evigo.example.lan]
 devices:
   - id: server

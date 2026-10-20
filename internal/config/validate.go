@@ -106,7 +106,7 @@ func (settings Config) validateWeb() error {
 
 	for _, allowed := range settings.Web.AllowedHosts {
 		if !allowedHostOK(allowed) {
-			return errors.New("web.allowed_hosts entries must be a hostname or IP address with an optional port, without a scheme or path")
+			return errors.New("web.allowed_hosts entries must be a hostname or IP address, without a scheme, port or path")
 		}
 	}
 
@@ -114,16 +114,7 @@ func (settings Config) validateWeb() error {
 }
 
 func allowedHostOK(allowed string) bool {
-	host := allowed
-	if splitHost, port, err := net.SplitHostPort(allowed); err == nil {
-		if !numericPortOK(port) {
-			return false
-		}
-
-		host = splitHost
-	}
-
-	return net.ParseIP(host) != nil || hostnamePattern.MatchString(host)
+	return net.ParseIP(allowed) != nil || hostnamePattern.MatchString(allowed)
 }
 
 func numericPortOK(port string) bool {

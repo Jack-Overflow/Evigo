@@ -193,8 +193,13 @@ func TestGivenListenerWhenRequestHostVariesThenOnlySafeHostsAreAccepted(t *testi
 		{"loopback refuses DNS name", "127.0.0.1:8080", nil, "rebind.example:8080", false},
 		{"LAN accepts IP", "0.0.0.0:8080", nil, "192.0.2.5:8080", true},
 		{"LAN refuses DNS name", "0.0.0.0:8080", nil, "evigo.example.lan:8080", false},
-		{"allowlist accepts exact name", "127.0.0.1:8080", []string{"evigo.example.lan"}, "EVIGO.example.lan", true},
-		{"allowlist refuses others", "127.0.0.1:8080", []string{"evigo.example.lan"}, "127.0.0.1:8080", false},
+		{"allowlist accepts the name in any case", "127.0.0.1:8080", []string{"evigo.example.lan"}, "EVIGO.example.lan", true},
+		{"allowlist accepts the name on any port", "0.0.0.0:8080", []string{"evigo.example.lan"}, "evigo.example.lan:8080", true},
+		{"allowlist keeps loopback by IP", "127.0.0.1:8080", []string{"evigo.example.lan"}, "127.0.0.1:8080", true},
+		{"allowlist keeps localhost", "127.0.0.1:8080", []string{"evigo.example.lan"}, "localhost:8080", true},
+		{"allowlist refuses unlisted names", "127.0.0.1:8080", []string{"evigo.example.lan"}, "rebind.example:8080", false},
+		{"allowlist refuses names that only start the same", "127.0.0.1:8080", []string{"evigo.example.lan"}, "evigo.example.lan.attacker.example", false},
+		{"allowlist still refuses LAN IP on loopback", "127.0.0.1:8080", []string{"evigo.example.lan"}, "192.0.2.5:8080", false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			// Given a loopback, LAN or allowlisted listener.

@@ -30,17 +30,14 @@ func (server *Server) protect(next http.Handler) http.Handler {
 // Any DNS name could be pointed at a LAN listener, so names must be allowlisted
 // to stop DNS rebinding; literal IPs and localhost are safe to accept.
 func (server *Server) hostAllowed(host string) bool {
-	if len(server.settings.AllowedHosts) > 0 {
-		return slices.ContainsFunc(server.settings.AllowedHosts, func(allowed string) bool { return strings.EqualFold(host, allowed) })
-	}
-
 	hostname := host
 	if parsed, _, err := net.SplitHostPort(host); err == nil {
 		hostname = parsed
 	}
 
 	hostname = strings.Trim(hostname, "[]")
-	if strings.EqualFold(hostname, "localhost") {
+	sameName := func(name string) bool { return strings.EqualFold(hostname, name) }
+	if sameName("localhost") || slices.ContainsFunc(server.settings.AllowedHosts, sameName) {
 		return true
 	}
 
