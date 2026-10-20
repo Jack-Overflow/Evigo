@@ -152,6 +152,35 @@ jobs:
             dist/SHA256SUMS
           retention-days: 7
           if-no-files-found: error
+  check-native:
+    name: Native archive (${{ matrix.arch }})
+    needs: build-native
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: linux-binaries
+          path: dist
+      - name: Run the native archive on this CPU
+        env:
+          ARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.build-native.outputs.version }}
+        run: |
+          tar -xzf "dist/evigo-linux-$ARCH.tar.gz" -C dist
+          test "$("dist/evigo-linux-$ARCH" version)" = "Evigo $VERSION"
+          "dist/evigo-linux-$ARCH" validate --config config.example.yaml
   build-docker:
     name: Docker (${{ matrix.arch }})
     needs: build-native
@@ -169,10 +198,6 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8.0.2
-        with:
-          name: linux-binaries
-          path: dist
       - name: Build the release candidate
         env:
           VERSION: ${{ needs.build-native.outputs.version }}
@@ -182,17 +207,13 @@ jobs:
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --label "org.opencontainers.image.version=$VERSION" \
             -t evigo:local .
-      - name: Validate image and native archive on this CPU
+      - name: Validate the image
         env:
-          ARCH: ${{ matrix.arch }}
           VERSION: ${{ needs.build-native.outputs.version }}
         run: |
           docker compose config --quiet
           test "$(docker run --rm --network none evigo:local version)" = "Evigo $VERSION"
           docker run --rm --network none -v "$PWD/config.example.yaml:/config.yaml:ro" evigo:local validate --config /config.yaml
-          tar -xzf "dist/evigo-linux-$ARCH.tar.gz" -C dist
-          test "$("dist/evigo-linux-$ARCH" version)" = "Evigo $VERSION"
-          "dist/evigo-linux-$ARCH" validate --config config.example.yaml
           docker image inspect evigo:local --format '{{.Id}}' > image-id.txt
           docker save evigo:local | gzip > evigo-image.tar.gz
       - uses: actions/upload-artifact@v7.0.2
