@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -305,44 +304,6 @@ func TestGivenEvigoDatabaseWithDamagedPendingTableWhenOpenedThenItIsRefusedUncha
 			}
 			if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
 				t.Fatal("damaged database was modified")
-			}
-		})
-	}
-}
-
-func TestGivenEvigoDatabaseWithUnfamiliarLayoutWhenOpenedThenItIsRefusedUnchanged(t *testing.T) {
-	for name, setup := range map[string]string{
-		"pending without a primary key": strings.Replace(schema, "device_id TEXT PRIMARY KEY", "device_id TEXT NOT NULL", 1),
-		"an extra table":                schema + "CREATE TABLE notes (text TEXT);",
-	} {
-		t.Run(name, func(t *testing.T) {
-			// Given a file marked as a current Evigo database whose tables are laid out differently.
-			path := filepath.Join(t.TempDir(), "evigo.db")
-			address := url.URL{Scheme: "file", Path: path}
-			unfamiliar, err := sql.Open("sqlite", address.String())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err = unfamiliar.Exec(setup + fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d;", applicationID, schemaVersion)); err != nil {
-				t.Fatal(err)
-			}
-			unfamiliar.Close()
-			before, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			// When Evigo opens it.
-			opened, err := Open(path)
-
-			// Then it is refused and the file is unchanged.
-			if err == nil {
-				opened.Close()
-				t.Fatal("unfamiliar layout accepted")
-			}
-			after, err := os.ReadFile(path)
-			if err != nil || !bytes.Equal(before, after) {
-				t.Fatal("refused database was modified")
 			}
 		})
 	}

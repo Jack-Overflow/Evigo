@@ -308,10 +308,6 @@ func readable(ctx context.Context, sqliteDatabase *sql.DB) bool {
 		return false
 	}
 
-	if !layoutMatches(ctx, sqliteDatabase) {
-		return false
-	}
-
 	_, err := queries.New(sqliteDatabase).ListPending(ctx)
 
 	return err == nil

@@ -133,8 +133,8 @@ Tests sit beside the code as `*_test.go`. `bin/` and `dist/` are build outputs.
 - **SQL lives in `.sql` files.** Queries are in `internal/database/queries.sql`
   and the schema in `internal/database/schema.sql`. Run `make generate` and
   commit the generated Go with them. A database is only opened if it has the
-  current `schemaVersion` and exactly the expected tables and readable rows;
-  any other file is refused, never overwritten.
+  current `schemaVersion`, passes SQLite's integrity check and its saved
+  progress can be read; any other file is refused, never overwritten.
 - **History only records changes.** Recovery reports its own transitions as
   events that the monitor collects; the monitor adds UPS status, reachability
   and wake results. A pass with no changes writes nothing.
