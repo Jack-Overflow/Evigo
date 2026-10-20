@@ -226,7 +226,7 @@ database, or packets must keep every one of them and add a regression test.
   a separate CI job so failures report independently. Keep it that way.
 - Deployment, release, and `VERSION` changes need maintainer review
   (`.github/CODEOWNERS`).
-- `VERSION` is the release version. Branch protection only lets a pull request
+- `VERSION` is the release version. The `main` ruleset only lets a pull request
   merge into main once it is up to date with main and every Verify job passes.
   Nothing is published on merge. To release, a maintainer updates `VERSION` and
   `CHANGELOG.md`, merges to main, and runs **Release** in GitHub Actions. It re-runs every check
