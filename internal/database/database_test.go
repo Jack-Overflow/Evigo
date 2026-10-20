@@ -229,14 +229,20 @@ func TestGivenSavedHistoryWhenPagedThenEventsComeNewestFirstWithACursor(t *testi
 }
 
 func TestGivenMoreEventsThanKeptWhenAppendedThenOnlyTheNewestRemain(t *testing.T) {
-	// Given a store with more events than it keeps.
+	// Given a store already holding as many events as it keeps, one per second from the epoch.
 	opened := openTemporary(t)
-	events := make([]history.Event, keptHistoryEvents+5)
+	fill := `INSERT INTO history (at_ns, kind, device_id, details)
+ WITH RECURSIVE second(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM second WHERE n + 1 < ?)
+ SELECT n * 1000000000, 'ups_status', '', '{}' FROM second`
+	if _, err := opened.sqlite.Exec(fill, keptHistoryEvents); err != nil {
+		t.Fatal(err)
+	}
+	events := make([]history.Event, 5)
 	for index := range events {
-		events[index] = history.Event{At: time.Unix(int64(index), 0), Kind: history.UPSStatus}
+		events[index] = history.Event{At: time.Unix(int64(keptHistoryEvents+index), 0), Kind: history.UPSStatus}
 	}
 
-	// When they are appended.
+	// When five more are appended.
 	if err := opened.AppendHistory(context.Background(), events); err != nil {
 		t.Fatal(err)
 	}
