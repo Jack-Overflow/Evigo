@@ -1,4 +1,5 @@
 import { act, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   answerAtTheCurrentTime,
@@ -68,6 +69,20 @@ describe("Given a request for Evigo's status", () => {
       expect(
         await screen.findByText('Waking is allowed in 20s'),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('When the minimum charge marker is hovered', () => {
+    beforeEach(async () => {
+      answerWith(statusWith());
+      renderApp();
+      await userEvent.hover(await screen.findByText('25% min'));
+    });
+
+    it('Then it explains the minimum in a tooltip', async () => {
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Waking needs at least 25%',
+      );
     });
   });
 
