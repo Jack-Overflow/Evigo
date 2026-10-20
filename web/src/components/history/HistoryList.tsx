@@ -28,7 +28,7 @@ const icons: Record<HistoryKind, LucideIcon> = {
 
 export function HistoryList({ devices }: { devices: Device[] }) {
   const [cursors, setCursors] = useState<number[]>([]);
-  const { page, unavailable } = useHistory(cursors.at(-1));
+  const { page, unavailable, loading } = useHistory(cursors.at(-1));
   const deviceNames = new Map(
     devices.map((device) => [device.id, device.name]),
   );
@@ -43,6 +43,11 @@ export function HistoryList({ devices }: { devices: Device[] }) {
         {!page && unavailable && (
           <p className="p-5 text-sm text-muted-foreground">
             History is unavailable
+          </p>
+        )}
+        {page && unavailable && (
+          <p role="status" className="px-5 py-3 text-xs text-warning">
+            History could not be refreshed. Showing the last loaded events.
           </p>
         )}
         {page?.events.length === 0 && (
@@ -87,7 +92,7 @@ export function HistoryList({ devices }: { devices: Device[] }) {
           <Button
             variant="outline"
             className="text-xs"
-            disabled={cursors.length === 0}
+            disabled={loading || cursors.length === 0}
             onClick={() => setCursors((previous) => previous.slice(0, -1))}
           >
             Newer
@@ -95,7 +100,7 @@ export function HistoryList({ devices }: { devices: Device[] }) {
           <Button
             variant="outline"
             className="text-xs"
-            disabled={nextBefore == null}
+            disabled={loading || nextBefore == null}
             onClick={() =>
               nextBefore != null &&
               setCursors((previous) => [...previous, nextBefore])

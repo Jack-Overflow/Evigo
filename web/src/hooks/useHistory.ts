@@ -12,5 +12,9 @@ export function useHistory(before: number | undefined) {
     placeholderData: keepPreviousData,
   });
 
-  return { page: query.data, unavailable: query.isError };
+  return {
+    page: query.data,
+    unavailable: query.isError,
+    loading: query.isPlaceholderData,
+  };
 }

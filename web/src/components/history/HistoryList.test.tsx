@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,11 +27,13 @@ function answerWith(events: HistoryEvent[]) {
   );
 }
 
-function answerWithTwoPages() {
+function answerWithTwoPages(olderPageReady: Promise<void> = Promise.resolve()) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
       if (url.includes('before=20')) {
+        await olderPageReady;
+
         return Response.json({
           events: [
             {
@@ -205,6 +207,67 @@ describe("Given a request for Evigo's history", () => {
       await screen.findByText('NAS recovered');
 
       expect(screen.getByRole('button', { name: 'Newer' })).toBeDisabled();
+    });
+  });
+
+  describe('When the next page is still loading', () => {
+    beforeEach(async () => {
+      answerWithTwoPages(new Promise(() => {}));
+      renderHistory();
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Older' }),
+      );
+    });
+
+    it('Then it cannot page again until that page arrives', () => {
+      expect(screen.getByRole('button', { name: 'Older' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Newer' })).toBeDisabled();
+    });
+  });
+
+  describe('When history stops refreshing after it has loaded', () => {
+    beforeEach(async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValueOnce(
+            Response.json({
+              events: [
+                {
+                  id: 1,
+                  at: minutesAgo(1),
+                  kind: 'started',
+                  details: { version: '0.2.0' },
+                },
+              ],
+              next_before: null,
+            }),
+          )
+          .mockImplementation(async () =>
+            Response.json({ error: 'unavailable' }, { status: 503 }),
+          ),
+      );
+      renderHistory();
+      await screen.findByText('Evigo 0.2.0 started');
+      await act(() => vi.advanceTimersByTimeAsync(6000));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('Then it says the events shown may be out of date', async () => {
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        'History could not be refreshed. Showing the last loaded events.',
+      );
+    });
+
+    it('Then it keeps showing the last loaded events', async () => {
+      await screen.findByRole('status');
+
+      expect(screen.getByText('Evigo 0.2.0 started')).toBeInTheDocument();
     });
   });
 
