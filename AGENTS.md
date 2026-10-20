@@ -226,8 +226,9 @@ database, or packets must keep every one of them and add a regression test.
   a separate CI job so failures report independently. Keep it that way.
 - Deployment, release, and `VERSION` changes need maintainer review
   (`.github/CODEOWNERS`).
-- `VERSION` is the release version. Merges to main are verified and built but
-  never published. To release, a maintainer updates `VERSION` and `CHANGELOG.md`,
+- `VERSION` is the release version. Branch protection on main requires every
+  Verify job to pass on a pull request that is up to date with main, so merges
+  are never published unverified. To release, a maintainer updates `VERSION` and `CHANGELOG.md`,
   merges to main, and runs **Release** in GitHub Actions. It re-runs every check
   and publishes the Linux archives, installer, `SHA256SUMS`, and
   `ghcr.io/jack-overflow/evigo` images that were verified.
