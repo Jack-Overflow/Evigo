@@ -1,148 +1,85 @@
 # Evigo
 
-Evigo turns your devices back on after a power cut.
+Evigo turns your devices back on after a power cut. It watches your UPS through
+[Network UPS Tools (NUT)](https://networkupstools.org/), remembers which devices
+were on when the power went out, and wakes them with Wake-on-LAN once power is
+back and safe.
 
-When the power goes out, your UPS keeps things running for a while and then your
-existing shutdown setup powers devices off safely. Evigo watches
-your UPS, remembers which devices were running before the outage, and wakes
-them with Wake-on-LAN once the power is back and safe.
-
-Evigo only ever turns devices **on**. It never shuts anything down and never
-sends commands to your UPS, so keep your existing shutdown setup as it is.
+It only ever turns devices **on**. Keep your existing shutdown setup as it is.
 
 ![The Evigo dashboard, light theme on the left and dark on the right](docs/dashboard.png)
 
 ## How it works
 
-1. **Before an outage:** Evigo keeps an eye on your UPS and checks which of your
-   devices are online.
-2. **When the power goes out:** it notes which devices were running just before.
-   Devices that were already off are left alone.
-3. **When the power comes back:** it waits until power has been steady for a short
-   while and the UPS battery has recharged to your chosen minimum charge. Any
-   device that's still answering by then is left alone.
-4. **Then it wakes the devices that are off,** retrying every so often until each
-   one comes back online, or gives up after a while if one never does.
+1. When the UPS goes on battery, Evigo notes which devices are online.
+2. When mains returns, it waits until power has been stable for a while and the
+   battery has recharged to your chosen minimum.
+3. It wakes the devices that are off, retrying until each answers or it gives
+   up.
 
-If Evigo itself restarts in the middle of this, for example because the host
-it runs on also lost power, it picks up where it left off.
-
-If Evigo loses contact with the UPS, or there's a long gap between its checks,
-it starts the wait for stable power again.
+If Evigo restarts part-way through, it carries on where it left off.
 
 ## What you need
 
-- A UPS monitored by [Network UPS Tools (NUT)](https://networkupstools.org/), with
-  its server reachable from where Evigo runs.
-- Devices with **Wake-on-LAN enabled** in their BIOS/UEFI and network settings.
-  If your UPS turns its outlets off at the end of an outage, the device must also
-  allow waking after a full power loss (often called "Wake on LAN from S5" or
-  "after AC loss" in the BIOS).
-- An always-on Linux host on the **same network** as the devices you want to
-  wake, or one that can reach them with a
-  [directed broadcast](#devices-on-another-network). Docker or a systemd-based
-  Linux install both work.
-- Each device's IP address (or hostname) and MAC address.
+- A UPS monitored by NUT, reachable from where Evigo runs.
+- Devices with Wake-on-LAN enabled. If your UPS cuts its outlets at the end of
+  an outage, also enable waking after a full power loss in the BIOS.
+- An always-on Linux host on the same network as the devices (or see
+  [devices on another network](#devices-on-another-network)).
 
-## Quick start with Docker
+## Install
 
-Docker must run on a Linux host: Evigo uses host networking so its wake packets
-and pings reach your network, which Docker Desktop on macOS and Windows can't
-provide.
+### Docker
+
+Docker must run on a Linux host, because Evigo needs host networking to reach
+your devices.
 
 1. Download [`compose.yaml`](compose.yaml) and
-   [`config.example.yaml`](config.example.yaml) into a new folder, and rename the
-   example to `config.yaml`.
-2. Edit `config.yaml` with your UPS and devices (see [Configuration](#configuration)).
-3. Check the configuration:
+   [`config.example.yaml`](config.example.yaml), and rename the example to
+   `config.yaml`.
+2. Fill in your UPS and devices (see [Configuration](#configuration)).
+3. Check it, then start Evigo:
 
    ```sh
    docker compose run --rm evigo validate --config /etc/evigo/config.yaml
-   ```
-
-4. Start Evigo and watch the logs:
-
-   ```sh
    docker compose up -d
    docker compose logs -f evigo
    ```
 
-You should see `Evigo started` followed by your UPS status.
-
-## Installing on Linux without Docker
+### Linux with systemd
 
 ```sh
 curl -fsSL https://github.com/Jack-Overflow/Evigo/releases/latest/download/install.sh -o install.sh
 sudo sh ./install.sh
-```
-
-The installer downloads and verifies the latest release, creates an `evigo`
-system user, and installs a systemd service. It doesn't start anything. Then:
-
-```sh
 sudoedit /etc/evigo/config.yaml
 sudo -u evigo evigo validate --config /etc/evigo/config.yaml
 sudo systemctl enable --now evigo
-journalctl -u evigo -f
 ```
 
-The installer needs systemd, `curl` or `wget`, `tar`, `awk`, `sha256sum` and the
-iputils version of `ping`, which most distributions include. It tells you if
-anything is missing.
+The installer verifies the release, creates an `evigo` user and installs the
+service without starting it. It needs systemd and the iputils `ping`.
 
 ## Configuration
 
-Everything lives in one YAML file. The [example](config.example.yaml) lists every
-setting with its default, so you only need to fill in your own details:
+Everything is in one YAML file. Fill in your UPS and devices:
 
 ```yaml
 nut:
   host: 192.0.2.5 # your NUT server
-  ups: myups # the UPS name as NUT knows it
+  ups: myups # the UPS name in NUT
 devices:
   - id: nas
     name: NAS
     host: 192.0.2.20
     mac: "02:00:00:00:00:01"
-  - id: server
-    name: Home server
-    host: 192.0.2.21
-    mac: "02:00:00:00:00:02"
 ```
 
-Restart Evigo after changing the file. Run `evigo validate` first: for a mistyped
-or invalid setting, it tells you which one and on which line.
-
-### Settings you might want to change
-
-| Setting                        | Default | What it does                                                                                                           |
-| ------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `recovery.min_battery_percent` | `25`    | How charged the UPS battery must be before devices are woken.                                                          |
-| `recovery.stable_power_delay`  | `30s`   | How long power must stay on before waking anything. Set it longer than a shutdown takes to finish after mains returns. |
-| `recovery.retry_interval`      | `30s`   | How often to resend the wake signal to a device that hasn't come back.                                                 |
-| `recovery.device_timeout`      | `10m`   | How long to keep trying before giving up on a device.                                                                  |
-
-### NUT login
-
-If your NUT server needs a login, add a username and password. You can keep them
-out of the file by using environment variables (with Docker, put them in a `.env`
-file next to `compose.yaml`) or a password file:
-
-```yaml
-nut:
-  username: monitor
-  password: "${NUT_PASSWORD}"
-  # or: password_file: /etc/evigo/nut-password
-```
-
-Evigo connects to NUT without encryption, so the username and password are sent
-in plain text. Only use a login on a network you trust.
+See [all settings](docs/configuration.md) for every option and its default.
 
 ### Devices on another network
 
-Wake-on-LAN signals don't normally cross between networks or VLANs. Either run
-Evigo on the same network as the devices, or set the device's subnet broadcast
-address as a directed broadcast (your router must allow it):
+Wake-on-LAN doesn't normally cross networks or VLANs. Set the device's subnet
+broadcast address instead (your router must allow directed broadcasts):
 
 ```yaml
 devices:
@@ -154,101 +91,47 @@ devices:
       broadcast: 198.51.100.255
 ```
 
-## Dashboard and status API
+## Dashboard
 
-Evigo can serve a read-only dashboard, and the status API behind it, over HTTP.
-It's off until you choose an address for it:
+Set `web.listen` to turn on the read-only dashboard and its API:
 
 ```yaml
 web:
   listen: 127.0.0.1:8080
 ```
 
-Then open `http://127.0.0.1:8080` on the host running Evigo. The dashboard
-shows:
+It shows power, battery, each device and recent history, and says so when
+Evigo stops answering. There is **no login**: keep it on `127.0.0.1` or behind
+a reverse proxy that adds one. If you reach it by hostname, add the name to
+`web.allowed_hosts` (without a port).
 
-- **Power:** whether mains power is safe, why waking is paused if it is, and a
-  countdown while power is stabilising.
-- **Battery:** the charge against `min_battery_percent`.
-- **Devices:** whether each one answers ping and, during recovery, its wake
-  attempts and time left.
-- **History:** UPS changes, reachability changes, wakes and recoveries, 15 at a
-  time.
-
-It refreshes every few seconds. If Evigo stops answering or stops checking, the
-page says so and greys out the last known state rather than showing it as
-current.
-
-There is **no login**. Anyone who can reach it can see your UPS and devices, so
-keep it on `127.0.0.1` or put it behind a reverse proxy that adds a login and
-HTTPS. To stop other websites reaching it through DNS rebinding, Evigo only
-answers requests addressed to an IP address, `localhost`, or a hostname you list.
-If you reach it by a hostname, list that name, without a port:
-
-```yaml
-web:
-  listen: 127.0.0.1:8080
-  allowed_hosts: [evigo.example.lan]
-```
-
-| Request                               | Returns                                                                                                   |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `GET /api/status`                     | UPS status, each device's reachability, recovery progress, and why waking is blocked right now, if it is. |
-| `GET /api/history?limit=50&before=ID` | Recent events, newest first. Pass `next_before` as `before` for older ones.                               |
-| `GET /health`                         | `200` while Evigo is checking your UPS and devices normally, `503` otherwise; useful for uptime monitors. |
-
-Evigo keeps the newest 10,000 history events and deletes older ones as new ones
-arrive.
+The API serves `GET /api/status`, `GET /api/history` and `GET /health`, which
+returns `200` while Evigo is checking normally, for uptime monitors.
 
 ## Troubleshooting
 
-**A device wasn't woken.** Check that:
+**A device wasn't woken.** It must have been on when the power went out and off
+once power was stable, and Wake-on-LAN must work for it, including after a full
+power loss. The battery must also have reached `min_battery_percent`.
 
-- it was online when the power went out (devices that were already off are left
-  off on purpose),
-- Wake-on-LAN works for it, for example by testing with another Wake-on-LAN tool,
-  including after its power has been fully cut if your UPS turns its outlets off,
-- it was off once power became stable; a device still answering ping then is
-  treated as on and left alone,
-- the battery reached `min_battery_percent`; the logs show the UPS status and
-  battery level.
+**Every device shows as unknown.** Evigo needs to run `ping` without root.
+Check that its group (`10001` in Docker, or the `evigo` group) is inside
+`sysctl net.ipv4.ping_group_range`, and widen the range in `/etc/sysctl.d/` if
+not.
 
-**Every device shows as unknown.** Evigo checks devices with `ping`. In Docker,
-the host must allow the container's group (`10001`) to ping:
-
-```sh
-sysctl net.ipv4.ping_group_range
-```
-
-If `10001` isn't inside that range, widen it in `/etc/sysctl.d/`. For a native
-install, do the same for the `evigo` group the installer printed. Devices Evigo
-can't check are never woken, so this is worth fixing first.
-
-**A slow device was missed.** If it was still shutting down when the power came
-back and answered ping until the stability delay ended, increase
-`stable_power_delay` so it's longer than the device's shutdown.
-
-**Evigo won't start because the web address is in use.** Pick a different
-`web.listen` port, or leave it empty to turn it off.
-
-**Evigo won't start because of its database.** Evigo refuses a database file it
-doesn't recognise and leaves the file untouched. Stop it, move the file aside,
-and start again.
+**A slow device was missed.** Increase `stable_power_delay` so it's longer than
+the device takes to shut down.
 
 ## Upgrading
 
 - **Docker:** `docker compose pull && docker compose up -d`
-- **Linux:** stop the service, run the installer again, then start the service.
-  Your configuration is kept.
+- **Linux:** run the installer again, then restart the service. Your
+  configuration is kept.
 
-## Contributing
+## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) to get started and [AGENTS.md](AGENTS.md)
-for architecture, safety rules and development commands.
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and
+[SECURITY.md](SECURITY.md).
 
 ## License
 
