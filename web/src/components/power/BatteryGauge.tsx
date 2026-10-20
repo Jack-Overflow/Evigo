@@ -1,4 +1,5 @@
 import { chargeText } from '../../lib/format';
+import { Tooltip } from '../ui/tooltip';
 
 const segments = 20;
 const segmentGapPx = 6;
@@ -67,9 +68,11 @@ export function BatteryGauge({
         </div>
         {minimum > 0 && <ThresholdMarker minimum={minimum} />}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {gaugeCaption(minimum, valid)}
-      </p>
+      {!valid && (
+        <p className="text-xs text-muted-foreground">
+          Last known value, not a fresh reading
+        </p>
+      )}
     </div>
   );
 }
@@ -86,17 +89,21 @@ function ThresholdMarker({ minimum }: { minimum: number }) {
   }
 
   return (
-    <div aria-hidden="true" className="relative mt-1.5 h-5">
+    <div className="relative mt-1.5 h-5">
       <span
+        aria-hidden="true"
         className="absolute top-0 h-1.5 w-px bg-warning/70"
         style={{ left }}
       />
-      <span
-        className={`absolute top-2 whitespace-nowrap text-[11px] leading-none text-warning/80 ${alignment}`}
-        style={{ left }}
-      >
-        {minimum}% min
-      </span>
+      <Tooltip content={`Waking needs at least ${minimum}%`} side="bottom">
+        <span
+          tabIndex={0}
+          className={`absolute top-2 cursor-help whitespace-nowrap border-b border-dotted border-current pb-0.5 text-[11px] leading-none text-warning/80 ${alignment}`}
+          style={{ left }}
+        >
+          {`${minimum}% min`}
+        </span>
+      </Tooltip>
     </div>
   );
 }
@@ -109,12 +116,4 @@ function gaugeValueText(
   const lastKnown = valid ? '' : '; last known reading';
 
   return `${chargeText(percent)}; waking needs ${minimum}%${lastKnown}`;
-}
-
-function gaugeCaption(minimum: number, valid: boolean): string {
-  if (!valid) {
-    return 'Last known value, not a fresh reading';
-  }
-
-  return `Waking needs at least ${minimum}%`;
 }

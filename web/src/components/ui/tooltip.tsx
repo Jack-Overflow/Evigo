@@ -4,9 +4,11 @@ import { Tooltip as Primitive } from 'radix-ui';
 export function Tooltip({
   children,
   content,
+  side = 'top',
 }: {
   children: ReactElement;
   content: ReactNode;
+  side?: 'top' | 'bottom';
 }) {
   return (
     <Primitive.Provider delayDuration={200}>
@@ -14,6 +16,7 @@ export function Tooltip({
         <Primitive.Trigger asChild>{children}</Primitive.Trigger>
         <Primitive.Portal>
           <Primitive.Content
+            side={side}
             sideOffset={6}
             className="z-50 max-w-xs rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md"
           >
