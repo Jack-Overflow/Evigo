@@ -110,6 +110,7 @@ jobs:
       - run: make security-check
   build-native:
     name: Native builds
+    needs: [lint-go, lint-frontend, lint-script, test-go, test-frontend, security]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -172,7 +173,6 @@ jobs:
         with:
           name: linux-binaries
           path: dist
-      - run: docker build --target test -t evigo:test .
       - name: Build the release candidate
         env:
           VERSION: ${{ needs.build-native.outputs.version }}
