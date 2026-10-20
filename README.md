@@ -28,15 +28,8 @@ sends commands to your UPS, so keep your existing shutdown setup as it is.
 If Evigo itself restarts in the middle of this, for example because the host
 it runs on also lost power, it picks up where it left off.
 
-A missing or expired UPS reading restarts the full stability delay. So does a
-pause between checks longer than `nut.max_reading_age`. Unobserved time does not
-use up a device's recovery timeout. Each wake packet must be sent before its UPS
-reading expires.
-
-A device still shutting down when mains returns is woken if it's off by the time
-the stability delay ends. A saved attempt timestamp ahead of the current clock
-does not prevent
-retrying once the full stability delay has passed.
+If Evigo loses contact with the UPS, or there's a long gap between its checks,
+it starts the wait for stable power again.
 
 ## What you need
 
@@ -98,17 +91,17 @@ setting with its default, so you only need to fill in your own details:
 
 ```yaml
 nut:
-  host: 192.168.1.5 # your NUT server
+  host: 192.0.2.5 # your NUT server
   ups: myups # the UPS name as NUT knows it
 devices:
   - id: nas
     name: NAS
-    host: 192.168.1.20
-    mac: "aa:bb:cc:dd:ee:01"
+    host: 192.0.2.20
+    mac: "02:00:00:00:00:01"
   - id: server
     name: Home server
-    host: 192.168.1.21
-    mac: "aa:bb:cc:dd:ee:02"
+    host: 192.0.2.21
+    mac: "02:00:00:00:00:02"
 ```
 
 Restart Evigo after changing the file. Run `evigo validate` first: for a mistyped
@@ -148,10 +141,10 @@ for the device (your router must allow it):
 devices:
   - id: nas
     name: NAS
-    host: 192.168.20.20
-    mac: "aa:bb:cc:dd:ee:01"
+    host: 198.51.100.20
+    mac: "02:00:00:00:00:01"
     wol:
-      broadcast: 192.168.20.255
+      broadcast: 198.51.100.255
 ```
 
 ## Dashboard and status API
@@ -206,6 +199,8 @@ arrive.
 - it was online when the power went out (devices that were already off are left
   off on purpose),
 - Wake-on-LAN works for it, for example by testing with another Wake-on-LAN tool,
+- it was off once power became stable; a device still answering ping then is
+  treated as on and left alone,
 - the battery reached `min_battery_percent`; the logs show the UPS status and
   battery level.
 
@@ -227,15 +222,15 @@ back and answered ping until the stability delay ended, increase
 **Evigo won't start because the web address is in use.** Pick a different
 `web.listen` port, or leave it empty to turn it off.
 
-**Evigo won't start because of its database.** Evigo refuses to touch a database
-file it doesn't recognise, including leaving its journal mode unchanged. Stop it,
-move the file aside, and start again.
+**Evigo won't start because of its database.** Evigo refuses a database file it
+doesn't recognise and leaves the file untouched. Stop it, move the file aside,
+and start again.
 
 ## Upgrading
 
 - **Docker:** `docker compose pull && docker compose up -d`
 - **Linux:** stop the service, run the installer again, then start the service.
-  Your configuration and saved progress are kept.
+  Your configuration is kept.
 
 ## Contributing
 
