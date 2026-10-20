@@ -13,5 +13,5 @@ If private reporting is unavailable, open an issue asking for a private reportin
 channel without including vulnerability details.
 
 Include the affected Evigo version, impact, and steps to reproduce with simulated
-UPS readings or other safe test inputs. Do not test against machines or UPS
+UPS readings or other safe test inputs. Do not test against devices or UPS
 equipment you do not own or have permission to use.

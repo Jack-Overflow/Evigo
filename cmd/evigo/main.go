@@ -7,13 +7,17 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/Jack-Overflow/Evigo/internal/api"
 	"github.com/Jack-Overflow/Evigo/internal/config"
 	"github.com/Jack-Overflow/Evigo/internal/database"
 	"github.com/Jack-Overflow/Evigo/internal/devices"
+	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/monitor"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
@@ -116,7 +120,37 @@ func run(settings config.Config, stderr io.Writer) error {
 		return err
 	}
 
-	ups := nut.NewReader(nut.Settings{
+	ups := nut.NewReader(nutSettings(settings), nil)
+	defer ups.Close()
+	deviceRecovery := recovery.New(recoverySettings(settings), configuredDevices, saved, logger)
+	loop := monitor.New(monitorSettings(settings), ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, logger)
+	services := []func(context.Context) error{loop.Run}
+	if settings.Web.Listen != "" {
+		listener, err := net.Listen("tcp", settings.Web.Listen)
+		if err != nil {
+			return fmt.Errorf("cannot start web listener: %w", err)
+		}
+
+		defer listener.Close()
+		server := api.New(webSettings(settings), loop.Snapshot, db.History)
+		services = append(services, func(ctx context.Context) error { return server.Serve(ctx, listener) })
+	}
+
+	recordStarted(ctx, db, logger)
+	logger.Info("Evigo started", "version", version, "devices", len(configuredDevices), "pending", len(saved), "web", settings.Web.Listen)
+
+	return runAllUntilOneStops(ctx, services)
+}
+
+func recordStarted(ctx context.Context, db *database.DB, logger *slog.Logger) {
+	started := history.Event{At: time.Now(), Kind: history.Started, Details: history.Details{Version: version}}
+	if err := db.AppendHistory(ctx, []history.Event{started}); err != nil {
+		logger.Error("cannot save history", "error", err)
+	}
+}
+
+func nutSettings(settings config.Config) nut.Settings {
+	return nut.Settings{
 		Host:           settings.NUT.Host,
 		Port:           settings.NUT.Port,
 		UPS:            settings.NUT.UPS,
@@ -124,23 +158,53 @@ func run(settings config.Config, stderr io.Writer) error {
 		Password:       settings.NUT.Password,
 		ConnectTimeout: settings.NUT.ConnectTimeout,
 		ReadTimeout:    settings.NUT.ReadTimeout,
-	}, nil)
-	defer ups.Close()
-	deviceRecovery := recovery.New(recovery.Settings{
-		StablePowerDelay:    settings.Recovery.StablePowerDelay,
-		ShutdownGracePeriod: settings.Recovery.ShutdownGracePeriod,
-		MinBatteryPercent:   settings.Recovery.MinBatteryPercent,
-		RetryInterval:       settings.Recovery.RetryInterval,
-		DeviceTimeout:       settings.Recovery.DeviceTimeout,
-		MaxReadingAge:       settings.NUT.MaxReadingAge,
-	}, configuredDevices, saved, logger)
-	loop := monitor.New(monitor.Settings{
+	}
+}
+
+func recoverySettings(settings config.Config) recovery.Settings {
+	return recovery.Settings{
+		StablePowerDelay:  settings.Recovery.StablePowerDelay,
+		MinBatteryPercent: settings.Recovery.MinBatteryPercent,
+		RetryInterval:     settings.Recovery.RetryInterval,
+		DeviceTimeout:     settings.Recovery.DeviceTimeout,
+		MaxReadingAge:     settings.NUT.MaxReadingAge,
+	}
+}
+
+func monitorSettings(settings config.Config) monitor.Settings {
+	return monitor.Settings{
 		PollInterval:          settings.Poll.Interval,
 		OnBatteryPollInterval: settings.Poll.OnBatteryInterval,
 		PingTimeout:           settings.Probe.Timeout,
 		MaxReadingAge:         settings.NUT.MaxReadingAge,
-	}, ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, logger)
-	logger.Info("Evigo started", "version", version, "devices", len(configuredDevices), "pending", len(saved))
+	}
+}
 
-	return loop.Run(ctx)
+func webSettings(settings config.Config) api.Settings {
+	return api.Settings{
+		Listen:        settings.Web.Listen,
+		AllowedHosts:  settings.Web.AllowedHosts,
+		Version:       version,
+		UPS:           settings.NUT.UPS,
+		HealthyWithin: 3*max(settings.Poll.Interval, settings.Poll.OnBatteryInterval) + settings.NUT.ReadTimeout + settings.Probe.Timeout,
+	}
+}
+
+func runAllUntilOneStops(ctx context.Context, services []func(context.Context) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan error, len(services))
+	for _, service := range services {
+		go func() {
+			results <- service(ctx)
+			cancel()
+		}()
+	}
+
+	var errs []error
+	for range services {
+		errs = append(errs, <-results)
+	}
+
+	return errors.Join(errs...)
 }

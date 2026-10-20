@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@custom-variant dark (@media (prefers-color-scheme: dark));
+@theme {
+  --color-background: #f6f8f7;
+  --color-panel: #ffffff;
+  --color-border: #d9e1df;
+  --color-foreground: #142021;
+  --color-muted: #eef2f1;
+  --color-muted-foreground: #5b6d6b;
+  --color-card: #ffffff;
+  --color-card-foreground: #142021;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #142021;
+  --color-success: #0d9488;
+  --color-warning: #b45309;
+  --color-primary: #0d9488;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #eef2f1;
+  --color-secondary-foreground: #142021;
+  --color-accent: #e6eeec;
+  --color-accent-foreground: #142021;
+  --color-destructive: #dc2626;
+  --color-input: #d9e1df;
+  --color-ring: #0d9488;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #101516;
+    --color-panel: #171d1e;
+    --color-border: #2a3334;
+    --color-foreground: #e6edeb;
+    --color-muted: #202929;
+    --color-muted-foreground: #8d9f9d;
+    --color-card: #171d1e;
+    --color-card-foreground: #e6edeb;
+    --color-popover: #171d1e;
+    --color-popover-foreground: #e6edeb;
+    --color-success: #5eead4;
+    --color-warning: #fcd34d;
+    --color-primary: #5eead4;
+    --color-primary-foreground: #092a25;
+    --color-secondary: #202929;
+    --color-secondary-foreground: #e6edeb;
+    --color-accent: #273334;
+    --color-accent-foreground: #e6edeb;
+    --color-destructive: #ef8c8c;
+    --color-input: #2a3334;
+    --color-ring: #5eead4;
+  }
+}
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+  }
+  button:not(:disabled),
+  a {
+    cursor: pointer;
+  }
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 4px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+}
+@layer components {
+  .brand-wordmark {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 700;
+    letter-spacing: -0.059em;
+    line-height: 1;
+  }
+  .eyebrow {
+    @apply text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

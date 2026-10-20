@@ -15,7 +15,10 @@ type Reading struct {
 	Values  map[string]string
 }
 
-var mainsFlags = []string{"OL", "CHRG", "TRIM", "BOOST"}
+var (
+	mainsFlags    = []string{"OL", "CHRG", "TRIM", "BOOST"}
+	settlingFlags = []string{"OL", "CHRG", "DISCHRG", "TRIM", "BOOST"}
+)
 
 func (reading Reading) Copy() *Reading {
 	values := make(map[string]string, len(reading.Values))
@@ -47,6 +50,21 @@ func (reading Reading) Safe(minBatteryPercent float64) bool {
 
 	for _, flag := range flags {
 		if !slices.Contains(mainsFlags, flag) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (reading Reading) Settling() bool {
+	flags := reading.Flags()
+	if !slices.Contains(flags, "OL") {
+		return false
+	}
+
+	for _, flag := range flags {
+		if !slices.Contains(settlingFlags, flag) {
 			return false
 		}
 	}

@@ -19,11 +19,9 @@ poll:
   interval: 10s
   on_battery_interval: 2s
 recovery:
+  # Devices still answering ping when this delay ends are left as they are, so
+  # set it longer than a shutdown takes to finish after mains returns.
   stable_power_delay: 30s
-  # A device answering ping within this period of stable power may still be
-  # shutting down, so it is not yet treated as recovered unless a wake was sent.
-  # Failed/skipped sends do not bypass grace; another outage renews it.
-  shutdown_grace_period: 2m
   min_battery_percent: 25
   retry_interval: 30s
   # Counts only while waking is allowed.
@@ -33,6 +31,14 @@ probe:
 wol:
   broadcast: 255.255.255.255
   port: 9
+web:
+  # Leave empty to turn off the dashboard and API.
+  # It has no login: keep it on loopback or behind a reverse proxy that adds one.
+  listen: ''
+  # listen: 127.0.0.1:8080
+  # Hostnames the dashboard is reached by, for example through a reverse proxy,
+  # without a port. IP addresses and localhost are always accepted.
+  # allowed_hosts: [evigo.example.lan]
 devices:
   - id: server
     name: Home server

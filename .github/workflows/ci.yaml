@@ -1,7 +1,5 @@
 name: Verify
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_call:
     outputs:
@@ -32,6 +30,22 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           go mod verify
+  lint-frontend:
+    name: Frontend lint and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: make frontend-lint
   lint-script:
     name: Script and workflow lint
     runs-on: ubuntu-latest
@@ -60,6 +74,20 @@ jobs:
           check-latest: true
       - run: make test
       - run: go run ./cmd/evigo validate --config config.example.yaml
+  test-frontend:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make frontend-test
   security:
     name: Dependency vulnerabilities
     runs-on: ubuntu-latest
@@ -72,6 +100,13 @@ jobs:
         with:
           go-version: '1.26.x'
           check-latest: true
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
       - run: make security-check
   build-native:
     name: Native builds
@@ -87,6 +122,11 @@ jobs:
         with:
           go-version: '1.26.x'
           check-latest: true
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Read release version
         id: version
         run: |

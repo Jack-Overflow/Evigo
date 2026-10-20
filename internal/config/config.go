@@ -27,7 +27,13 @@ type Config struct {
 	Recovery Recovery `yaml:"recovery"`
 	Probe    Probe    `yaml:"probe"`
 	WOL      WOL      `yaml:"wol"`
+	Web      Web      `yaml:"web"`
 	Devices  []Device `yaml:"devices"`
+}
+
+type Web struct {
+	Listen       string   `yaml:"listen"`
+	AllowedHosts []string `yaml:"allowed_hosts"`
 }
 
 type NUT struct {
@@ -48,11 +54,10 @@ type Poll struct {
 }
 
 type Recovery struct {
-	StablePowerDelay    time.Duration `yaml:"stable_power_delay"`
-	ShutdownGracePeriod time.Duration `yaml:"shutdown_grace_period"`
-	MinBatteryPercent   float64       `yaml:"min_battery_percent"`
-	RetryInterval       time.Duration `yaml:"retry_interval"`
-	DeviceTimeout       time.Duration `yaml:"device_timeout"`
+	StablePowerDelay  time.Duration `yaml:"stable_power_delay"`
+	MinBatteryPercent float64       `yaml:"min_battery_percent"`
+	RetryInterval     time.Duration `yaml:"retry_interval"`
+	DeviceTimeout     time.Duration `yaml:"device_timeout"`
 }
 
 type Probe struct {
@@ -81,11 +86,10 @@ func Defaults() Config {
 	settings.NUT = NUT{Port: 3493, ConnectTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, MaxReadingAge: 30 * time.Second}
 	settings.Poll = Poll{Interval: 10 * time.Second, OnBatteryInterval: 2 * time.Second}
 	settings.Recovery = Recovery{
-		StablePowerDelay:    30 * time.Second,
-		ShutdownGracePeriod: 2 * time.Minute,
-		MinBatteryPercent:   25,
-		RetryInterval:       30 * time.Second,
-		DeviceTimeout:       10 * time.Minute,
+		StablePowerDelay:  30 * time.Second,
+		MinBatteryPercent: 25,
+		RetryInterval:     30 * time.Second,
+		DeviceTimeout:     10 * time.Minute,
 	}
 	settings.Probe = Probe{Timeout: 2 * time.Second}
 	settings.WOL = WOL{Broadcast: "255.255.255.255", Port: 9}

@@ -303,13 +303,13 @@ func TestGivenIncompleteResponseWhenReadFailsThenErrorReportsStageAndProgress(t 
 }
 
 func TestGivenUntrustedStatusWhenFormattedForLogsThenSafetyStillUsesOriginalFlags(t *testing.T) {
-	// Given
+	// Given a status containing text Evigo does not recognise.
 	reading := Reading{Status: "OL secret-text CHRG secret-text", Battery: 100}
 
-	// When
+	// When it is formatted for logs.
 	status := reading.LogStatus()
 
-	// Then
+	// Then only known flags and UNKNOWN appear, and the safety check still sees the original status.
 	if status != "OL UNKNOWN CHRG" || reading.Safe(25) || reading.Status != "OL secret-text CHRG secret-text" {
 		t.Fatal("status formatting exposed raw text or changed safety decisions")
 	}
