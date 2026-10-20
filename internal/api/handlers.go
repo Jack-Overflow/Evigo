@@ -1,10 +1,8 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
 	"github.com/Jack-Overflow/Evigo/internal/snapshot"
@@ -13,7 +11,6 @@ import (
 const (
 	defaultHistoryLimit = 50
 	maxHistoryLimit     = 200
-	historyTimeout      = 3 * time.Second
 )
 
 type monitorState string
@@ -60,9 +57,7 @@ func (server *Server) history(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(request.Context(), historyTimeout)
-	defer cancel()
-	page, err := server.readHistory(ctx, limit, int64(beforeID))
+	page, err := server.readHistory(request.Context(), limit, int64(beforeID))
 	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "unavailable")
 
