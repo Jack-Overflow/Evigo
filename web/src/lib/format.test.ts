@@ -98,7 +98,7 @@ describe("Given a device's reachability", () => {
     });
 
     it('Then it says whether the device responds', () => {
-      expect(reachability).toEqual({ label: 'Not responding', tone: 'warn' });
+      expect(reachability).toEqual({ label: 'Offline', tone: 'warn' });
     });
   });
 

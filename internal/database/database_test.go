@@ -23,8 +23,8 @@ func TestGivenPendingDevicesWhenSavedAndReopenedThenProgressIsRestored(t *testin
 		t.Fatal(err)
 	}
 	want := map[string]recovery.Progress{
-		"server":  {Attempts: 2, LastAttempt: time.Unix(0, 1_700_000_000_000_000_000), TimeLeft: 9 * time.Minute, GraceLeft: 0},
-		"storage": {TimeLeft: 10 * time.Minute, GraceLeft: 2 * time.Minute},
+		"server":  {Attempts: 2, LastAttempt: time.Unix(0, 1_700_000_000_000_000_000), TimeLeft: 9 * time.Minute},
+		"storage": {TimeLeft: 10 * time.Minute},
 	}
 	if err = opened.SavePending(context.Background(), want); err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestGivenPendingDevicesWhenSavedAndReopenedThenProgressIsRestored(t *testin
 	for deviceID, progress := range want {
 		loaded := got[deviceID]
 		if loaded.Attempts != progress.Attempts || !loaded.LastAttempt.Equal(progress.LastAttempt) ||
-			loaded.TimeLeft != progress.TimeLeft || loaded.GraceLeft != progress.GraceLeft {
+			loaded.TimeLeft != progress.TimeLeft {
 			t.Fatalf("%s: got %+v, want %+v", deviceID, loaded, progress)
 		}
 	}

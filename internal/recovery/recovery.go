@@ -24,7 +24,6 @@ type Progress struct {
 	Attempts    int
 	LastAttempt time.Time
 	TimeLeft    time.Duration
-	GraceLeft   time.Duration
 }
 
 type Outcome struct {
@@ -39,19 +38,17 @@ type Pass struct {
 }
 
 type Settings struct {
-	StablePowerDelay    time.Duration
-	ShutdownGracePeriod time.Duration
-	MinBatteryPercent   float64
-	RetryInterval       time.Duration
-	DeviceTimeout       time.Duration
-	MaxReadingAge       time.Duration
+	StablePowerDelay  time.Duration
+	MinBatteryPercent float64
+	RetryInterval     time.Duration
+	DeviceTimeout     time.Duration
+	MaxReadingAge     time.Duration
 }
 
 type Recovery struct {
 	settings               Settings
 	devices                []*devices.Device
 	pending                map[string]*Progress
-	wakeSent               map[string]bool
 	safeSince              time.Time
 	wasStable              bool
 	previousPass           time.Time
@@ -65,7 +62,6 @@ func New(settings Settings, configured []*devices.Device, saved map[string]Progr
 		settings: settings,
 		devices:  configured,
 		pending:  map[string]*Progress{},
-		wakeSent: map[string]bool{},
 		log:      log,
 	}
 	for _, device := range configured {
@@ -107,12 +103,6 @@ func (recovery *Recovery) Update(pass Pass) Outcome {
 	return Outcome{Wake: due, Events: append(outageEvents, deviceEvents...)}
 }
 
-func (recovery *Recovery) WakeSent(deviceID string) {
-	if progress := recovery.pending[deviceID]; progress != nil {
-		recovery.wakeSent[deviceID] = true
-	}
-}
-
 func (settings Settings) PowerBlock(at time.Time, reading *nut.Reading, safeSince time.Time) Block {
 	switch {
 	case reading == nil || at.Before(reading.At) || at.Sub(reading.At) >= settings.MaxReadingAge:
@@ -136,10 +126,6 @@ func (recovery *Recovery) Settings() Settings {
 
 func (recovery *Recovery) SafeSince() time.Time {
 	return recovery.safeSince
-}
-
-func (recovery *Recovery) WakeSentTo(deviceID string) bool {
-	return recovery.wakeSent[deviceID]
 }
 
 func (recovery *Recovery) StorageFailed() {
@@ -177,11 +163,6 @@ func (recovery *Recovery) trackOutage(pass Pass) []history.Event {
 }
 
 func (recovery *Recovery) addOutageDevicesToPending(at time.Time) []history.Event {
-	for deviceID, progress := range recovery.pending {
-		progress.GraceLeft = recovery.settings.ShutdownGracePeriod
-		delete(recovery.wakeSent, deviceID)
-	}
-
 	if at.Sub(recovery.devicesOnlineCheckedAt) > recovery.settings.MaxReadingAge {
 		return nil
 	}
@@ -189,10 +170,7 @@ func (recovery *Recovery) addOutageDevicesToPending(at time.Time) []history.Even
 	var events []history.Event
 	for _, device := range recovery.devices {
 		if recovery.devicesOnline[device.ID] && recovery.pending[device.ID] == nil {
-			recovery.pending[device.ID] = &Progress{
-				TimeLeft:  recovery.settings.DeviceTimeout,
-				GraceLeft: recovery.settings.ShutdownGracePeriod,
-			}
+			recovery.pending[device.ID] = &Progress{TimeLeft: recovery.settings.DeviceTimeout}
 			recovery.log.Info("device will be woken after the outage", "device", device.ID)
 			events = append(events, history.Event{At: at, Kind: history.DevicePending, DeviceID: device.ID})
 		}
@@ -206,14 +184,8 @@ func (recovery *Recovery) powerStable(at time.Time) bool {
 }
 
 func (recovery *Recovery) spendRecoveryTime(elapsed time.Duration) {
-	for deviceID, progress := range recovery.pending {
-		timeoutElapsed := elapsed
-		if !recovery.wakeSent[deviceID] {
-			timeoutElapsed = max(0, elapsed-progress.GraceLeft)
-		}
-
-		progress.GraceLeft = max(0, progress.GraceLeft-elapsed)
-		progress.TimeLeft = max(0, progress.TimeLeft-timeoutElapsed)
+	for _, progress := range recovery.pending {
+		progress.TimeLeft = max(0, progress.TimeLeft-elapsed)
 	}
 }
 
@@ -227,16 +199,14 @@ func (recovery *Recovery) updatePendingDevices(pass Pass) ([]*devices.Device, []
 		}
 
 		switch reachability := pass.Reachability[device.ID]; {
-		case reachability == devices.Online && (recovery.wakeSent[device.ID] || progress.GraceLeft == 0):
+		case reachability == devices.Online:
 			delete(recovery.pending, device.ID)
-			delete(recovery.wakeSent, device.ID)
 			recovery.log.Info("device is back online", "device", device.ID, "attempts", progress.Attempts)
 			events = append(events, history.Event{
 				At: pass.At, Kind: history.DeviceRecovered, DeviceID: device.ID, Details: history.Details{Attempt: progress.Attempts},
 			})
 		case progress.TimeLeft == 0:
 			delete(recovery.pending, device.ID)
-			delete(recovery.wakeSent, device.ID)
 			recovery.log.Warn("device did not come back in time", "device", device.ID, "attempts", progress.Attempts)
 			events = append(events, history.Event{
 				At: pass.At, Kind: history.DeviceGaveUp, DeviceID: device.ID, Details: history.Details{Attempt: progress.Attempts},

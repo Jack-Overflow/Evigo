@@ -105,12 +105,11 @@ func newHarness(t *testing.T) *harness {
 	}
 	log := slog.New(slog.DiscardHandler)
 	deviceRecovery := recovery.New(recovery.Settings{
-		StablePowerDelay:    30 * time.Second,
-		ShutdownGracePeriod: 2 * time.Minute,
-		MinBatteryPercent:   25,
-		RetryInterval:       30 * time.Second,
-		DeviceTimeout:       10 * time.Minute,
-		MaxReadingAge:       30 * time.Second,
+		StablePowerDelay:  30 * time.Second,
+		MinBatteryPercent: 25,
+		RetryInterval:     30 * time.Second,
+		DeviceTimeout:     10 * time.Minute,
+		MaxReadingAge:     30 * time.Second,
 	}, configured, nil, log)
 	settings := Settings{PollInterval: 10 * time.Second, OnBatteryPollInterval: 2 * time.Second, PingTimeout: 2 * time.Second, MaxReadingAge: 30 * time.Second}
 	h.monitor = New(settings, h.ups, configured, deviceRecovery, h.storage, map[string]recovery.Progress{}, ping, log)
@@ -256,7 +255,7 @@ func TestGivenTwoDueDevicesWhenReadingExpiresBetweenSendsThenOnlyFirstPacketIsSe
 	}
 }
 
-func TestGivenSkippedFirstWakeWhenDeviceAnswersDuringGraceThenItRemainsPending(t *testing.T) {
+func TestGivenSkippedFirstWakeWhenDeviceStaysOffThenItRemainsPendingWithoutAPacket(t *testing.T) {
 	for _, reason := range []string{"storage failure", "expired reading", "send failure"} {
 		t.Run(reason, func(t *testing.T) {
 			// Given a device whose first wake is not sent, for this reason.
@@ -271,18 +270,12 @@ func TestGivenSkippedFirstWakeWhenDeviceAnswersDuringGraceThenItRemainsPending(t
 				h.monitor.devices[0].WakeAddress = "invalid address"
 			}
 
-			// When it then answers ping during shutdown grace.
+			// When the pass that would wake it runs while the device stays off.
 			h.pass(10 * time.Second)
-			h.storage.fail = false
-			h.storage.beforeSave = nil
-			h.online = true
-			for range 4 {
-				h.pass(10 * time.Second)
-			}
 
-			// Then it stays pending and no packet was sent.
+			// Then no packet was sent and it is still waiting to be woken.
 			if h.packetReceived() || len(h.monitor.recovery.Pending()) != 1 {
-				t.Fatal("skipped send bypassed grace or emitted a packet")
+				t.Fatal("skipped send emitted a packet or dropped the device")
 			}
 		})
 	}
@@ -336,7 +329,7 @@ func TestGivenPendingDeviceWhenSnapshotReadThenItReflectsTheLatestPass(t *testin
 
 	// Then it shows the latest reading, reachability and recovery progress.
 	device := latest.Devices[0]
-	if device.Reachability != devices.Offline || device.Pending == nil || device.WakeSent {
+	if device.Reachability != devices.Offline || device.Pending == nil {
 		t.Fatalf("device status %+v", device)
 	}
 	if latest.Reading == nil || !latest.CheckedAt.Equal(h.clock) || !latest.StorageOK {
@@ -518,12 +511,11 @@ func TestGivenHistoryThatIsSlowAndFailsEveryPassWhenLoopRunsThenRecoveryStillWak
 	}
 	log := slog.New(slog.DiscardHandler)
 	deviceRecovery := recovery.New(recovery.Settings{
-		StablePowerDelay:    200 * time.Millisecond,
-		ShutdownGracePeriod: time.Minute,
-		MinBatteryPercent:   25,
-		RetryInterval:       time.Minute,
-		DeviceTimeout:       time.Minute,
-		MaxReadingAge:       150 * time.Millisecond,
+		StablePowerDelay:  200 * time.Millisecond,
+		MinBatteryPercent: 25,
+		RetryInterval:     time.Minute,
+		DeviceTimeout:     time.Minute,
+		MaxReadingAge:     150 * time.Millisecond,
 	}, configured, nil, log)
 	settings := Settings{PollInterval: 100 * time.Millisecond, OnBatteryPollInterval: 100 * time.Millisecond, PingTimeout: time.Second, MaxReadingAge: 150 * time.Millisecond}
 	loop := New(settings, ups, configured, deviceRecovery, slowFailingHistory{delay: 80 * time.Millisecond}, map[string]recovery.Progress{}, ping, log)

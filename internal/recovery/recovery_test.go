@@ -32,12 +32,11 @@ type harness struct {
 
 func testSettings() Settings {
 	return Settings{
-		StablePowerDelay:    30 * time.Second,
-		ShutdownGracePeriod: 2 * time.Minute,
-		MinBatteryPercent:   25,
-		RetryInterval:       30 * time.Second,
-		DeviceTimeout:       10 * time.Minute,
-		MaxReadingAge:       30 * time.Second,
+		StablePowerDelay:  30 * time.Second,
+		MinBatteryPercent: 25,
+		RetryInterval:     30 * time.Second,
+		DeviceTimeout:     10 * time.Minute,
+		MaxReadingAge:     30 * time.Second,
 	}
 }
 
@@ -72,8 +71,6 @@ func (h *harness) outage() {
 func (h *harness) passesUntilWake(reading *nut.Reading, limit int) int {
 	for count := 1; count <= limit; count++ {
 		if slices.Contains(h.pass(pollStep, reading, offline), "server") {
-			h.recovery.WakeSent("server")
-
 			return count
 		}
 	}
@@ -220,27 +217,42 @@ func TestGivenWokenDeviceWhenItAnswersPingThenRecoveryFinishes(t *testing.T) {
 	}
 }
 
-func TestGivenDeviceStillUpWhenPowerReturnsThenItIsOnlyRecoveredAfterShutdownGrace(t *testing.T) {
+func TestGivenDeviceThatStayedOnWhenWakingIsAllowedThenItIsDoneWithoutAWake(t *testing.T) {
 	// Given a device that kept answering ping through the outage.
 	h := newHarness(t, nil)
 	h.pass(0, mains, online)
 	h.pass(pollStep, onBattery, online)
 
-	// When power is stable and it is still online until the 2m shutdown grace is used up.
-	for range 15 {
-		h.pass(pollStep, mains, online)
+	// When power returns and stays safe for the stability delay with the device still on.
+	var woken []string
+	for range 4 {
+		woken = append(woken, h.pass(pollStep, mains, online)...)
 	}
-	stillPendingDuringGrace := len(h.recovery.Pending()) == 1
-	h.pass(pollStep, mains, online)
 
-	// Then it stays pending during grace and is only treated as recovered afterwards.
-	if !stillPendingDuringGrace || len(h.recovery.Pending()) != 0 {
-		t.Fatalf("pending during grace %t, after %v", stillPendingDuringGrace, h.recovery.Pending())
+	// Then it is no longer pending and was never woken.
+	if len(woken) != 0 || len(h.recovery.Pending()) != 0 {
+		t.Fatalf("woken %v, pending %v", woken, h.recovery.Pending())
 	}
 }
 
-func TestGivenDeviceShuttingDownLateWhenItGoesOfflineDuringGraceThenItIsWoken(t *testing.T) {
-	// Given a device that still answers ping when power returns.
+func TestGivenDeviceStillShuttingDownWhenMainsReturnsThenItIsWokenIfOffWhenWakingIsAllowed(t *testing.T) {
+	// Given a device still answering ping when mains returns.
+	h := newHarness(t, nil)
+	h.pass(0, mains, online)
+	h.pass(pollStep, onBattery, online)
+	h.pass(pollStep, mains, online)
+
+	// When it finishes shutting down before the stability delay ends.
+	woken := h.passesUntilWake(mains, 5)
+
+	// Then it is woken as soon as waking is allowed.
+	if woken != 3 {
+		t.Fatalf("woken on pass %d", woken)
+	}
+}
+
+func TestGivenDeviceStillOnWhenWakingIsAllowedThenALaterShutdownIsNotWoken(t *testing.T) {
+	// Given a device still on when waking becomes allowed after an outage.
 	h := newHarness(t, nil)
 	h.pass(0, mains, online)
 	h.pass(pollStep, onBattery, online)
@@ -248,12 +260,12 @@ func TestGivenDeviceShuttingDownLateWhenItGoesOfflineDuringGraceThenItIsWoken(t 
 		h.pass(pollStep, mains, online)
 	}
 
-	// When it finishes shutting down within grace.
-	due := h.pass(pollStep, mains, offline)
+	// When it goes off afterwards.
+	woken := h.passesUntilWake(mains, 10)
 
-	// Then it is woken.
-	if !slices.Equal(due, []string{"server"}) {
-		t.Fatalf("due = %v", due)
+	// Then it is left off, as a device turned off on purpose would be.
+	if woken != -1 {
+		t.Fatalf("woken on pass %d", woken)
 	}
 }
 
@@ -344,9 +356,9 @@ func TestGivenRepeatedOutageWhenDeviceIsPendingThenProgressIsKept(t *testing.T) 
 	// When a second outage starts before it recovers.
 	h.pass(pollStep, onBattery, offline)
 
-	// Then its attempts are kept and grace is restored for the next return of power.
+	// Then its attempts are kept.
 	progress := h.recovery.Pending()["server"]
-	if progress.Attempts != 1 || progress.GraceLeft != 2*time.Minute {
+	if progress.Attempts != 1 {
 		t.Fatalf("progress %+v", progress)
 	}
 }
@@ -365,7 +377,7 @@ func TestGivenStableRecoveryWhenPassesAreInterruptedThenTimersPauseAndStabilityR
 			after := h.recovery.Pending()["server"]
 
 			// Then nothing is woken or spent across the gap, and the full stability delay applies again.
-			if len(due) != 0 || after.TimeLeft != before.TimeLeft || after.GraceLeft != before.GraceLeft {
+			if len(due) != 0 || after.TimeLeft != before.TimeLeft {
 				t.Fatalf("recovery advanced across a gap: due %v, before %+v, after %+v", due, before, after)
 			}
 			if woken := h.passesUntilWake(mains, 4); woken != 3 {
@@ -401,44 +413,6 @@ func TestGivenPendingRecoveryWhenReadingHasInvalidAgeThenTimersPauseAndStability
 	}
 }
 
-func TestGivenUnsentAttemptWhenDeviceAnswersDuringGraceThenItRemainsPending(t *testing.T) {
-	// Given a device due for waking whose packets were never confirmed as sent.
-	h := newHarness(t, nil)
-	h.outage()
-	for range 4 {
-		h.pass(pollStep, mains, offline)
-	}
-
-	// When it answers ping during shutdown grace.
-	h.pass(pollStep, mains, online)
-
-	// Then it stays pending.
-	if len(h.recovery.Pending()) != 1 {
-		t.Fatal("unsent attempt bypassed shutdown grace")
-	}
-}
-
-func TestGivenPreviouslyWokenDeviceWhenAnotherOutageOccursThenNewGraceApplies(t *testing.T) {
-	// Given a device woken after one outage.
-	h := newHarness(t, nil)
-	h.outage()
-	h.passesUntilWake(mains, 10)
-
-	// When a second outage starts and power returns with the device still online.
-	h.pass(pollStep, onBattery, online)
-	for range 4 {
-		h.pass(pollStep, mains, online)
-	}
-
-	// Then new shutdown grace applies, and it is woken if it then goes offline.
-	if len(h.recovery.Pending()) != 1 {
-		t.Fatal("previous outage's wake bypassed new shutdown grace")
-	}
-	if due := h.pass(pollStep, mains, offline); !slices.Equal(due, []string{"server"}) {
-		t.Fatalf("late shutdown was not woken: %v", due)
-	}
-}
-
 func TestGivenFutureSavedAttemptWhenRestartedThenRetryFollowsFullStabilityDelay(t *testing.T) {
 	// Given a saved attempt timestamped an hour in the future.
 	h := newHarness(t, map[string]Progress{"server": {Attempts: 1, LastAttempt: start.Add(time.Hour), TimeLeft: time.Minute}})
@@ -452,18 +426,22 @@ func TestGivenFutureSavedAttemptWhenRestartedThenRetryFollowsFullStabilityDelay(
 	}
 }
 
-func TestGivenSavedAttemptWhenRestartedThenAnOnlineReplyStillHonoursGrace(t *testing.T) {
-	// Given a saved attempt with shutdown grace left.
-	h := newHarness(t, map[string]Progress{"server": {Attempts: 1, LastAttempt: start.Add(-time.Minute), TimeLeft: time.Minute, GraceLeft: time.Minute}})
+func TestGivenSavedProgressWhenRestartedAndTheDeviceIsOnThenItIsDoneOnceWakingIsAllowed(t *testing.T) {
+	// Given progress saved by a previous run.
+	h := newHarness(t, map[string]Progress{"server": {Attempts: 1, LastAttempt: start.Add(-time.Minute), TimeLeft: time.Minute}})
 
-	// When Evigo restarts and the device answers ping.
-	for range 4 {
+	// When Evigo restarts and the device answers ping through the stability delay.
+	pendingBeforeWakingAllowed := false
+	for count := 1; count <= 4; count++ {
 		h.pass(pollStep, mains, online)
+		if count == 3 {
+			pendingBeforeWakingAllowed = len(h.recovery.Pending()) == 1
+		}
 	}
 
-	// Then it stays pending, because a saved attempt is not proof a packet was sent.
-	if len(h.recovery.Pending()) != 1 {
-		t.Fatal("restored attempt was treated as a confirmed send")
+	// Then it stays pending until waking is allowed, and is then done.
+	if !pendingBeforeWakingAllowed || len(h.recovery.Pending()) != 0 {
+		t.Fatalf("pending before waking allowed %t, after %v", pendingBeforeWakingAllowed, h.recovery.Pending())
 	}
 }
 

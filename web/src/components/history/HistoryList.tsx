@@ -121,7 +121,7 @@ function historyText(event: HistoryEvent, deviceName: string): string {
     case 'reachability':
       return `${deviceName} is ${reachabilityText(reachability ?? 'unknown', false).label.toLowerCase()}`;
     case 'device_pending':
-      return `${deviceName} is waiting to be recovered`;
+      return `Watching ${deviceName} until power is stable`;
     case 'wake_requested':
       return `Wake requested for ${deviceName}`;
     case 'wake_sent':
@@ -129,7 +129,9 @@ function historyText(event: HistoryEvent, deviceName: string): string {
     case 'wake_failed':
       return `Wake to ${deviceName} failed (attempt ${attempt})`;
     case 'device_recovered':
-      return `${deviceName} recovered`;
+      return attempt
+        ? `${deviceName} recovered`
+        : `${deviceName} is on, no wake needed`;
     case 'device_gave_up':
       return `Gave up on ${deviceName} after ${attempt} ${attempt === 1 ? 'attempt' : 'attempts'}`;
   }

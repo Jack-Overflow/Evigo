@@ -63,12 +63,11 @@ func testServerWithHistory(listen string, allowedHosts ...string) (*Server, *fak
 		SafeSince: now.Add(-time.Minute),
 		StorageOK: true,
 		RecoverySettings: recovery.Settings{
-			StablePowerDelay:    30 * time.Second,
-			ShutdownGracePeriod: 2 * time.Minute,
-			MinBatteryPercent:   25,
-			RetryInterval:       30 * time.Second,
-			DeviceTimeout:       10 * time.Minute,
-			MaxReadingAge:       30 * time.Second,
+			StablePowerDelay:  30 * time.Second,
+			MinBatteryPercent: 25,
+			RetryInterval:     30 * time.Second,
+			DeviceTimeout:     10 * time.Minute,
+			MaxReadingAge:     30 * time.Second,
 		},
 		Devices: []snapshot.Device{
 			{Device: devices.Device{ID: "server", Name: "Server", Host: "192.0.2.10", MAC: mac}, Reachability: devices.Online},
@@ -76,7 +75,6 @@ func testServerWithHistory(listen string, allowedHosts ...string) (*Server, *fak
 				Device:       devices.Device{ID: "storage", Name: "Storage", Host: "192.0.2.11", MAC: mac},
 				Reachability: devices.Offline,
 				Pending:      &recovery.Progress{Attempts: 2, LastAttempt: now.Add(-10 * time.Second), TimeLeft: 9 * time.Minute},
-				WakeSent:     true,
 			},
 		},
 	}}
@@ -132,7 +130,7 @@ func TestGivenRunningMonitorWhenStatusRequestedThenPowerDevicesAndSettingsAreRep
 		t.Fatalf("idle device %+v", body.Devices[0])
 	}
 	pending := body.Devices[1].Recovery
-	if pending == nil || pending.Attempts != 2 || pending.TimeLeftSeconds != 540 || !pending.WakeSent {
+	if pending == nil || pending.Attempts != 2 || pending.TimeLeftSeconds != 540 {
 		t.Fatalf("pending device %+v", pending)
 	}
 	if body.Settings.StablePowerSeconds != 30 || body.Settings.MinBatteryPercent != 25 || body.Version != "0.2.0" {

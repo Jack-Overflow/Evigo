@@ -37,7 +37,6 @@ type powerResponse struct {
 type settingsResponse struct {
 	MinBatteryPercent    float64 `json:"min_battery_percent"`
 	StablePowerSeconds   int     `json:"stable_power_seconds"`
-	ShutdownGraceSeconds int     `json:"shutdown_grace_seconds"`
 	RetrySeconds         int     `json:"retry_seconds"`
 	DeviceTimeoutSeconds int     `json:"device_timeout_seconds"`
 }
@@ -52,11 +51,9 @@ type deviceResponse struct {
 }
 
 type deviceRecoveryResponse struct {
-	Attempts         int        `json:"attempts"`
-	LastAttemptAt    *time.Time `json:"last_attempt_at"`
-	TimeLeftSeconds  int        `json:"time_left_seconds"`
-	GraceLeftSeconds int        `json:"grace_left_seconds"`
-	WakeSent         bool       `json:"wake_sent"`
+	Attempts        int        `json:"attempts"`
+	LastAttemptAt   *time.Time `json:"last_attempt_at"`
+	TimeLeftSeconds int        `json:"time_left_seconds"`
 }
 
 func (server *Server) statusResponse(latest snapshot.Snapshot) statusResponse {
@@ -70,7 +67,6 @@ func (server *Server) statusResponse(latest snapshot.Snapshot) statusResponse {
 		Settings: settingsResponse{
 			MinBatteryPercent:    latest.RecoverySettings.MinBatteryPercent,
 			StablePowerSeconds:   seconds(latest.RecoverySettings.StablePowerDelay),
-			ShutdownGraceSeconds: seconds(latest.RecoverySettings.ShutdownGracePeriod),
 			RetrySeconds:         seconds(latest.RecoverySettings.RetryInterval),
 			DeviceTimeoutSeconds: seconds(latest.RecoverySettings.DeviceTimeout),
 		},
@@ -118,11 +114,9 @@ func deviceResponseFor(device snapshot.Device) deviceResponse {
 	}
 	if progress := device.Pending; progress != nil {
 		response.Recovery = &deviceRecoveryResponse{
-			Attempts:         progress.Attempts,
-			LastAttemptAt:    timeOrNil(progress.LastAttempt),
-			TimeLeftSeconds:  seconds(progress.TimeLeft),
-			GraceLeftSeconds: seconds(progress.GraceLeft),
-			WakeSent:         device.WakeSent,
+			Attempts:        progress.Attempts,
+			LastAttemptAt:   timeOrNil(progress.LastAttempt),
+			TimeLeftSeconds: seconds(progress.TimeLeft),
 		}
 	}
 

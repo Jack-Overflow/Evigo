@@ -67,7 +67,7 @@ export function reachabilityText(
 
   const texts: Record<Reachability, { label: string; tone: Tone }> = {
     online: { label: 'Online', tone: 'good' },
-    offline: { label: 'Not responding', tone: 'warn' },
+    offline: { label: 'Offline', tone: 'warn' },
     unknown: { label: 'Unknown', tone: 'neutral' },
   };
 

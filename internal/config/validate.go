@@ -73,7 +73,6 @@ func (settings Config) validateDurations() error {
 		{"poll.interval", settings.Poll.Interval},
 		{"poll.on_battery_interval", settings.Poll.OnBatteryInterval},
 		{"recovery.stable_power_delay", settings.Recovery.StablePowerDelay},
-		{"recovery.shutdown_grace_period", settings.Recovery.ShutdownGracePeriod},
 		{"recovery.retry_interval", settings.Recovery.RetryInterval},
 		{"recovery.device_timeout", settings.Recovery.DeviceTimeout},
 		{"probe.timeout", settings.Probe.Timeout},

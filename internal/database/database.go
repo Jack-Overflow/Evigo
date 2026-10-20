@@ -91,9 +91,8 @@ func (db *DB) LoadPending(ctx context.Context) (map[string]recovery.Progress, er
 	pending := make(map[string]recovery.Progress, len(rows))
 	for _, row := range rows {
 		progress := recovery.Progress{
-			Attempts:  int(row.Attempts),
-			TimeLeft:  time.Duration(row.TimeLeftNs),
-			GraceLeft: time.Duration(row.GraceLeftNs),
+			Attempts: int(row.Attempts),
+			TimeLeft: time.Duration(row.TimeLeftNs),
 		}
 		if row.LastAttemptNs != 0 {
 			progress.LastAttempt = time.Unix(0, row.LastAttemptNs)
@@ -121,10 +120,9 @@ func (db *DB) SavePending(ctx context.Context, pending map[string]recovery.Progr
 
 	for deviceID, progress := range pending {
 		row := queries.InsertPendingParams{
-			DeviceID:    deviceID,
-			Attempts:    int64(progress.Attempts),
-			TimeLeftNs:  int64(progress.TimeLeft),
-			GraceLeftNs: int64(progress.GraceLeft),
+			DeviceID:   deviceID,
+			Attempts:   int64(progress.Attempts),
+			TimeLeftNs: int64(progress.TimeLeft),
 		}
 		if !progress.LastAttempt.IsZero() {
 			row.LastAttemptNs = progress.LastAttempt.UnixNano()

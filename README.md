@@ -10,6 +10,8 @@ them with Wake-on-LAN once the power is back and safe.
 Evigo only ever turns devices **on**. It never shuts anything down and never
 sends commands to your UPS, so keep your existing shutdown setup as it is.
 
+![The Evigo dashboard, light theme on the left and dark on the right](docs/dashboard.png)
+
 ## How it works
 
 1. **Before an outage:** Evigo keeps an eye on your UPS and checks which of your
@@ -18,21 +20,22 @@ sends commands to your UPS, so keep your existing shutdown setup as it is.
    Devices that were already off are left alone.
 3. **When the power comes back:** it waits until power has been steady for a short
    while and the UPS battery has recharged enough to cover another outage.
-4. **Then it wakes your devices,** retrying every so often until each one comes
-   back online, or gives up after a while if one never does.
+   Devices that are still on by then never went off, or came back by themselves,
+   and are left as they are.
+4. **Then it wakes the devices that are off,** retrying every so often until each
+   one comes back online, or gives up after a while if one never does.
 
 If Evigo itself restarts in the middle of this, for example because the host
 it runs on also lost power, it picks up where it left off.
 
 A missing or expired UPS reading restarts the full stability delay. So does a
 pause between checks longer than `nut.max_reading_age`. Unobserved time does not
-use up a device's recovery timeout or shutdown grace. Each wake packet must be
-sent before its UPS reading expires.
+use up a device's recovery timeout. Each wake packet must be sent before its UPS
+reading expires.
 
-Recording an attempt does not mean its packet was sent. Failed or skipped sends
-cannot bypass shutdown grace, and another outage starts grace again. After a
-restart, any remaining grace is honoured until a new packet is sent or grace
-expires. A saved attempt timestamp ahead of the current clock does not prevent
+A device still shutting down when mains returns is woken if it's off by the time
+the stability delay ends. A saved attempt timestamp ahead of the current clock
+does not prevent
 retrying once the full stability delay has passed.
 
 ## What you need
@@ -113,13 +116,12 @@ or invalid setting, it tells you which one and on which line.
 
 ### Settings you might want to change
 
-| Setting                          | Default | What it does                                                           |
-| -------------------------------- | ------- | ---------------------------------------------------------------------- |
-| `recovery.min_battery_percent`   | `25`    | How charged the UPS battery must be before devices are woken.          |
-| `recovery.stable_power_delay`    | `30s`   | How long power must stay on before waking anything.                    |
-| `recovery.shutdown_grace_period` | `2m`    | Set this longer than your slowest device takes to shut down.           |
-| `recovery.retry_interval`        | `30s`   | How often to resend the wake signal to a device that hasn't come back. |
-| `recovery.device_timeout`        | `10m`   | How long to keep trying before giving up on a device.                  |
+| Setting                        | Default | What it does                                                                                                           |
+| ------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `recovery.min_battery_percent` | `25`    | How charged the UPS battery must be before devices are woken.                                                          |
+| `recovery.stable_power_delay`  | `30s`   | How long power must stay on before waking anything. Set it longer than a shutdown takes to finish after mains returns. |
+| `recovery.retry_interval`      | `30s`   | How often to resend the wake signal to a device that hasn't come back.                                                 |
+| `recovery.device_timeout`      | `10m`   | How long to keep trying before giving up on a device.                                                                  |
 
 ### NUT login
 
@@ -152,15 +154,30 @@ devices:
       broadcast: 192.168.20.255
 ```
 
-## Status API
+## Dashboard and status API
 
-Evigo can serve its current status and recent history over HTTP. It's off until
-you choose an address for it:
+Evigo can serve a read-only dashboard, and the status API behind it, over HTTP.
+It's off until you choose an address for it:
 
 ```yaml
 web:
   listen: 127.0.0.1:8080
 ```
+
+Then open `http://127.0.0.1:8080` on the host running Evigo. The dashboard
+shows:
+
+- **Power:** whether mains power is safe, why waking is paused if it is, and a
+  countdown while power is stabilising.
+- **Battery:** the charge against `min_battery_percent`.
+- **Devices:** whether each one answers ping and, during recovery, its wake
+  attempts and time left.
+- **History:** UPS changes, reachability changes, wakes and recoveries, 15 at a
+  time.
+
+It refreshes every few seconds. If Evigo stops answering or stops checking, the
+page says so and greys out the last known state rather than showing it as
+current.
 
 There is **no login**. Anyone who can reach it can see your UPS and devices, so
 keep it on `127.0.0.1` or put it behind a reverse proxy that adds a login and
@@ -176,7 +193,7 @@ web:
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `GET /api/status`                     | UPS status, each device's reachability, recovery progress, and why waking is blocked right now, if it is. |
 | `GET /api/history?limit=50&before=ID` | Recent events, newest first. Pass `next_before` as `before` for older ones.                               |
-| `GET /health`                         | `200` while Evigo is checking your UPS and devices normally; useful for uptime monitors.                  |
+| `GET /health`                         | `200` while Evigo is checking your UPS and devices normally, `503` otherwise; useful for uptime monitors. |
 
 Evigo keeps the newest 10,000 history events and deletes older ones as new ones
 arrive. When you upgrade from 0.1.0, the database is upgraded automatically and
@@ -203,8 +220,8 @@ install, do the same for the `evigo` group the installer printed. Devices Evigo
 can't check are never woken, so this is worth fixing first.
 
 **A slow device was missed.** If it was still shutting down when the power came
-back, increase `shutdown_grace_period` so it's longer than the device's
-shutdown.
+back and answered ping until the stability delay ended, increase
+`stable_power_delay` so it's longer than the device's shutdown.
 
 **Evigo won't start because the web address is in use.** Pick a different
 `web.listen` port, or leave it empty to turn it off.

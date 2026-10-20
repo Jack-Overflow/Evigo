@@ -22,7 +22,6 @@ type Device struct {
 	Device       devices.Device
 	Reachability devices.Reachability
 	Pending      *recovery.Progress
-	WakeSent     bool
 }
 
 func (snapshot Snapshot) PowerBlock(at time.Time) recovery.Block {

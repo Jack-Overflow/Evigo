@@ -197,7 +197,6 @@ func (monitor *Monitor) sendWakes(ctx context.Context, due []*devices.Device, re
 		}
 
 		monitor.history.record(event)
-		monitor.recovery.WakeSent(device.ID)
 		monitor.log.Info("wake sent", "device", device.ID, "mac", device.MAC.String())
 	}
 }
@@ -215,7 +214,6 @@ func (monitor *Monitor) publishSnapshot(at time.Time, reading *nut.Reading, reac
 		deviceSnapshot := snapshot.Device{
 			Device:       *device,
 			Reachability: reachability[device.ID],
-			WakeSent:     monitor.recovery.WakeSentTo(device.ID),
 		}
 		if progress, found := pending[device.ID]; found {
 			deviceSnapshot.Pending = &progress

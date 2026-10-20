@@ -18,7 +18,6 @@ export interface Power {
 export interface Settings {
   min_battery_percent: number;
   stable_power_seconds: number;
-  shutdown_grace_seconds: number;
   retry_seconds: number;
   device_timeout_seconds: number;
 }
@@ -27,8 +26,6 @@ export interface DeviceRecovery {
   attempts: number;
   last_attempt_at: string | null;
   time_left_seconds: number;
-  grace_left_seconds: number;
-  wake_sent: boolean;
 }
 
 export interface Device {

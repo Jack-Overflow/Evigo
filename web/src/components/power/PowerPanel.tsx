@@ -22,7 +22,9 @@ export function PowerPanel({
   const now = useServerNow();
   const { power, settings, devices } = status;
   const headline = powerHeadline(power);
-  const recovering = devices.filter((device) => device.recovery).length;
+  const devicesToWake = devices.filter(
+    (device) => device.recovery && device.reachability !== 'online',
+  ).length;
   const wakeAllowedInSeconds = power.wake_allowed_at
     ? (new Date(power.wake_allowed_at).getTime() - now) / 1000
     : null;
@@ -49,9 +51,7 @@ export function PowerPanel({
             <Detail label="Last reading">
               <Timestamp value={power.read_at} empty="No reading yet" />
             </Detail>
-            <Detail label="Recovery">
-              {recoverySummary(recovering, devices.length)}
-            </Detail>
+            <Detail label="Recovery">{recoverySummary(devicesToWake)}</Detail>
           </dl>
         </div>
         <BatteryGauge
@@ -74,10 +74,14 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function recoverySummary(recovering: number, total: number): string {
-  return recovering
-    ? `${recovering} of ${total} devices recovering`
-    : 'Nothing to recover';
+function recoverySummary(devicesToWake: number): string {
+  if (devicesToWake === 0) {
+    return 'Nothing to wake';
+  }
+
+  return devicesToWake === 1
+    ? '1 device to wake'
+    : `${devicesToWake} devices to wake`;
 }
 
 function powerHeadline(power: Power): { title: string; tone: Tone } {
@@ -85,8 +89,12 @@ function powerHeadline(power: Power): { title: string; tone: Tone } {
     return { title: 'Power is OK', tone: 'good' };
   }
 
+  if (power.block === 'unsafe_status' && upsSettling(power.status)) {
+    return { title: 'Waiting for the UPS to settle', tone: 'neutral' };
+  }
+
   const headlines: Record<PowerBlock, { title: string; tone: Tone }> = {
-    stabilising: { title: 'Mains is back, stabilising', tone: 'neutral' },
+    stabilising: { title: 'Checking power is stable', tone: 'neutral' },
     on_battery: { title: 'Running on battery', tone: 'warn' },
     battery_low: { title: 'Battery is recharging', tone: 'warn' },
     unsafe_status: { title: 'UPS reports a problem', tone: 'warn' },
@@ -139,4 +147,12 @@ function wakeAllowedText(seconds: number): string {
   }
 
   return `Waking is allowed in ${durationText(Math.ceil(seconds))}`;
+}
+
+const settlingFlags = ['OL', 'CHRG', 'DISCHRG', 'TRIM', 'BOOST'];
+
+function upsSettling(flags: string[]): boolean {
+  return (
+    flags.includes('OL') && flags.every((flag) => settlingFlags.includes(flag))
+  );
 }

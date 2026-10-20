@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Server } from 'lucide-react';
-import type { Device } from '../../api';
+import type { Device, DeviceRecovery } from '../../api';
+import { useServerNow } from '../../hooks/useServerNow';
 import { durationText, reachabilityText, type Tone } from '../../lib/format';
 import { Timestamp } from '../Timestamp';
 import { Card } from '../ui/card';
@@ -14,12 +15,23 @@ const badgeColours: Record<Tone, string> = {
 export function DeviceCard({
   device,
   stale,
+  countingFrom,
 }: {
   device: Device;
   stale: boolean;
+  countingFrom: string | null;
 }) {
+  const now = useServerNow();
   const reachability = reachabilityText(device.reachability, stale);
   const recovery = device.recovery;
+  const timeLeftSeconds =
+    recovery && countingFrom
+      ? Math.max(
+          0,
+          recovery.time_left_seconds -
+            Math.max(0, (now - Date.parse(countingFrom)) / 1000),
+        )
+      : null;
 
   return (
     <Card className="flex flex-col gap-4 p-5">
@@ -47,28 +59,13 @@ export function DeviceCard({
         <Detail label="MAC address">
           <span className="font-mono">{device.mac}</span>
         </Detail>
-        {recovery && (
-          <>
-            <Detail label="Wake attempts">{recovery.attempts}</Detail>
-            <Detail label="Last attempt">
-              <Timestamp value={recovery.last_attempt_at} empty="None yet" />
-            </Detail>
-            <Detail label="Time left to recover">
-              {durationText(recovery.time_left_seconds)}
-            </Detail>
-            {!recovery.wake_sent && recovery.grace_left_seconds > 0 && (
-              <Detail label="Shutdown grace left">
-                {durationText(recovery.grace_left_seconds)}
-              </Detail>
-            )}
-          </>
+        {recovery && device.reachability !== 'online' && (
+          <RecoveryDetails
+            recovery={recovery}
+            timeLeftSeconds={timeLeftSeconds}
+          />
         )}
       </dl>
-      {recovery && (
-        <p className="text-xs text-muted-foreground">
-          Time left only counts down while waking is allowed.
-        </p>
-      )}
     </Card>
   );
 }
@@ -79,5 +76,31 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
+  );
+}
+
+function RecoveryDetails({
+  recovery,
+  timeLeftSeconds,
+}: {
+  recovery: DeviceRecovery;
+  timeLeftSeconds: number | null;
+}) {
+  return (
+    <>
+      {recovery.attempts > 0 && (
+        <>
+          <Detail label="Wake attempts">{recovery.attempts}</Detail>
+          <Detail label="Last attempt">
+            <Timestamp value={recovery.last_attempt_at} />
+          </Detail>
+        </>
+      )}
+      {timeLeftSeconds != null && (
+        <Detail label="Time left to recover">
+          {durationText(Math.ceil(timeLeftSeconds))}
+        </Detail>
+      )}
+    </>
   );
 }

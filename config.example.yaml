@@ -19,11 +19,9 @@ poll:
   interval: 10s
   on_battery_interval: 2s
 recovery:
+  # Devices still answering ping when this delay ends are left as they are, so
+  # set it longer than a shutdown takes to finish after mains returns.
   stable_power_delay: 30s
-  # A device answering ping within this period of stable power may still be
-  # shutting down, so it is not yet treated as recovered unless a wake was sent.
-  # Failed/skipped sends do not bypass grace; another outage renews it.
-  shutdown_grace_period: 2m
   min_battery_percent: 25
   retry_interval: 30s
   # Counts only while waking is allowed.

@@ -42,7 +42,7 @@ func (q *Queries) InsertHistory(ctx context.Context, arg InsertHistoryParams) er
 
 const insertPending = `-- name: InsertPending :exec
 INSERT INTO pending (device_id, attempts, last_attempt_ns, time_left_ns, grace_left_ns)
-VALUES (?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, 0)
 `
 
 type InsertPendingParams struct {
@@ -50,7 +50,6 @@ type InsertPendingParams struct {
 	Attempts      int64
 	LastAttemptNs int64
 	TimeLeftNs    int64
-	GraceLeftNs   int64
 }
 
 func (q *Queries) InsertPending(ctx context.Context, arg InsertPendingParams) error {
@@ -59,7 +58,6 @@ func (q *Queries) InsertPending(ctx context.Context, arg InsertPendingParams) er
 		arg.Attempts,
 		arg.LastAttemptNs,
 		arg.TimeLeftNs,
-		arg.GraceLeftNs,
 	)
 	return err
 }
@@ -141,24 +139,30 @@ func (q *Queries) ListLatestHistory(ctx context.Context, limit int64) ([]History
 }
 
 const listPending = `-- name: ListPending :many
-SELECT device_id, attempts, last_attempt_ns, time_left_ns, grace_left_ns FROM pending
+SELECT device_id, attempts, last_attempt_ns, time_left_ns FROM pending
 `
 
-func (q *Queries) ListPending(ctx context.Context) ([]Pending, error) {
+type ListPendingRow struct {
+	DeviceID      string
+	Attempts      int64
+	LastAttemptNs int64
+	TimeLeftNs    int64
+}
+
+func (q *Queries) ListPending(ctx context.Context) ([]ListPendingRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPending)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Pending
+	var items []ListPendingRow
 	for rows.Next() {
-		var i Pending
+		var i ListPendingRow
 		if err := rows.Scan(
 			&i.DeviceID,
 			&i.Attempts,
 			&i.LastAttemptNs,
 			&i.TimeLeftNs,
-			&i.GraceLeftNs,
 		); err != nil {
 			return nil, err
 		}

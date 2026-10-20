@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import type { Status } from './api';
+import type { Device, DeviceRecovery, Status } from './api';
 
 function statusWith(overrides: Partial<Status> = {}): Status {
   return {
@@ -25,7 +25,6 @@ function statusWith(overrides: Partial<Status> = {}): Status {
     settings: {
       min_battery_percent: 25,
       stable_power_seconds: 30,
-      shutdown_grace_seconds: 120,
       retry_seconds: 30,
       device_timeout_seconds: 600,
     },
@@ -55,6 +54,32 @@ function stubStatusFetch(
 
       return statusFetch(url, init);
     }),
+  );
+}
+
+function nasWith(
+  reachability: Device['reachability'],
+  recovery: DeviceRecovery,
+): Device {
+  return {
+    id: 'nas',
+    name: 'NAS',
+    host: '192.0.2.10',
+    mac: '02:00:00:00:00:10',
+    reachability,
+    recovery,
+  };
+}
+
+const woken: DeviceRecovery = {
+  attempts: 1,
+  last_attempt_at: '2026-01-01T12:00:00Z',
+  time_left_seconds: 540,
+};
+
+function answerAtTheCurrentTime(status: Status) {
+  stubStatusFetch(async () =>
+    Response.json({ ...status, server_time: new Date().toISOString() }),
   );
 }
 
@@ -130,6 +155,12 @@ describe("Given a request for Evigo's status", () => {
       renderApp();
     });
 
+    it('Then it says it is checking power is stable', async () => {
+      expect(
+        await screen.findByText('Checking power is stable'),
+      ).toBeInTheDocument();
+    });
+
     it('Then it counts down to when waking is allowed', async () => {
       expect(
         await screen.findByText('Waking is allowed in 20s'),
@@ -170,8 +201,6 @@ describe("Given a request for Evigo's status", () => {
                 attempts: 2,
                 last_attempt_at: new Date().toISOString(),
                 time_left_seconds: 540,
-                grace_left_seconds: 0,
-                wake_sent: true,
               },
             },
           ],
@@ -196,9 +225,141 @@ describe("Given a request for Evigo's status", () => {
       ).toHaveTextContent('9m');
     });
 
-    it('Then the summary counts it as recovering', async () => {
+    it('Then the summary counts it as a device to wake', async () => {
+      expect(await screen.findByText('1 device to wake')).toBeInTheDocument();
+    });
+  });
+
+  describe('When a device that stayed on is watched during an outage', () => {
+    beforeEach(() => {
+      const status = statusWith({
+        devices: [
+          nasWith('online', {
+            attempts: 0,
+            last_attempt_at: null,
+            time_left_seconds: 600,
+          }),
+        ],
+      });
+      status.power.block = 'on_battery';
+      answerWith(status);
+      renderApp();
+    });
+
+    it('Then its card shows no recovery details', async () => {
+      expect(await screen.findByText('NAS')).toBeInTheDocument();
       expect(
-        await screen.findByText('1 of 1 devices recovering'),
+        screen.queryByText('Time left to recover'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('Then the summary has nothing to wake', async () => {
+      expect(await screen.findByText('Nothing to wake')).toBeInTheDocument();
+    });
+  });
+
+  describe('When a device is off during an outage', () => {
+    beforeEach(() => {
+      const status = statusWith({
+        devices: [
+          nasWith('offline', {
+            attempts: 0,
+            last_attempt_at: null,
+            time_left_seconds: 600,
+          }),
+        ],
+      });
+      status.power.block = 'on_battery';
+      answerWith(status);
+      renderApp();
+    });
+
+    it('Then its card shows no time left or attempt details', async () => {
+      expect(await screen.findByText('Offline')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Time left to recover'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Wake attempts')).not.toBeInTheDocument();
+    });
+
+    it('Then the summary counts it as a device to wake', async () => {
+      expect(await screen.findByText('1 device to wake')).toBeInTheDocument();
+    });
+  });
+
+  describe('When time passes between checks while waking is allowed', () => {
+    beforeEach(async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date('2026-01-01T12:00:00Z'));
+      answerAtTheCurrentTime(
+        statusWith({
+          checked_at: '2026-01-01T12:00:00Z',
+          devices: [nasWith('offline', woken)],
+        }),
+      );
+      renderApp();
+      await screen.findByText('Time left to recover');
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+    });
+
+    it('Then the time left counts down', async () => {
+      expect(
+        screen.getByText('Time left to recover').nextSibling,
+      ).toHaveTextContent('8m 30s');
+    });
+  });
+
+  describe('When waking is paused after a wake attempt', () => {
+    beforeEach(() => {
+      const status = statusWith({ devices: [nasWith('offline', woken)] });
+      status.power.block = 'on_battery';
+      answerWith(status);
+      renderApp();
+    });
+
+    it('Then it keeps showing the wake attempts', async () => {
+      expect(
+        (await screen.findByText('Wake attempts')).nextSibling,
+      ).toHaveTextContent('1');
+    });
+
+    it('Then it hides the time left while it is not counting down', async () => {
+      await screen.findByText('Wake attempts');
+
+      expect(
+        screen.queryByText('Time left to recover'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('When the UPS briefly reports discharging after mains returns', () => {
+    beforeEach(() => {
+      const status = statusWith();
+      status.power.block = 'unsafe_status';
+      status.power.status = ['OL', 'CHRG', 'DISCHRG'];
+      answerWith(status);
+      renderApp();
+    });
+
+    it('Then it says it is waiting for the UPS to settle', async () => {
+      expect(
+        await screen.findByText('Waiting for the UPS to settle'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('When the UPS reports a fault', () => {
+    beforeEach(() => {
+      const status = statusWith();
+      status.power.block = 'unsafe_status';
+      status.power.status = ['OL', 'OVER'];
+      answerWith(status);
+      renderApp();
+    });
+
+    it('Then it says the UPS reports a problem', async () => {
+      expect(
+        await screen.findByText('UPS reports a problem'),
       ).toBeInTheDocument();
     });
   });

@@ -112,6 +112,20 @@ describe("Given a request for Evigo's history", () => {
           device_id: 'removed-device',
           details: { attempt: 1 },
         },
+        {
+          id: 0,
+          at: minutesAgo(40),
+          kind: 'device_recovered',
+          device_id: 'nas',
+          details: {},
+        },
+        {
+          id: -1,
+          at: minutesAgo(50),
+          kind: 'device_pending',
+          device_id: 'nas',
+          details: {},
+        },
       ]);
       renderHistory();
     });
@@ -119,9 +133,11 @@ describe("Given a request for Evigo's history", () => {
     it('Then each is described in the order Evigo returned them', async () => {
       expect((await rows()).map((row) => row.textContent)).toEqual([
         'Wake sent to NAS (attempt 2)2m ago',
-        'NAS is not responding5m ago',
+        'NAS is offline5m ago',
         'UPS: On battery · Discharging · 80% charge9m ago',
         'removed-device recovered30m ago',
+        'NAS is on, no wake needed40m ago',
+        'Watching NAS until power is stable50m ago',
       ]);
     });
   });

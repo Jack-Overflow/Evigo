@@ -153,17 +153,15 @@ database, or packets must keep every one of them and add a regression test.
 - Power must stay safe for the full stability delay before any wake. A missing
   or expired reading, a restart, a storage failure, or a gap between passes longer
   than `nut.max_reading_age` starts the delay again. Backward time observations
-  also reset the delay. Unobserved intervals never consume timeout or grace.
+  also reset the delay. Unobserved intervals never consume the device timeout.
 - Only devices that answered ping on mains just before the outage are woken.
   Devices already off stay off, and a normal startup with nothing pending wakes
   nothing.
 - Only an offline ping result triggers a wake; an unknown result never does.
-- Before a device has been woken, an online reply only counts as recovered once
-  the shutdown grace period is used up, so a device still shutting down isn't
-  missed. A recorded attempt alone is not a successful send. Each outage renews
-  grace, and a restart honours remaining grace without assuming an earlier
-  recorded attempt was sent.
-- Device timeouts and grace count down only while waking is allowed.
+- Devices are watched until waking is allowed. A device that answers ping then
+  is done and is never woken, including one that shuts down later; a device
+  still shutting down when mains returns is woken if it is off by then.
+- Device timeouts count down only while waking is allowed.
 - An attempt is saved before its packet is sent. If saving fails, nothing is
   sent. A packet is only sent while its UPS reading is still fresh.
 - A restored attempt timestamp ahead of the clock never suppresses retries once

@@ -163,12 +163,11 @@ func nutSettings(settings config.Config) nut.Settings {
 
 func recoverySettings(settings config.Config) recovery.Settings {
 	return recovery.Settings{
-		StablePowerDelay:    settings.Recovery.StablePowerDelay,
-		ShutdownGracePeriod: settings.Recovery.ShutdownGracePeriod,
-		MinBatteryPercent:   settings.Recovery.MinBatteryPercent,
-		RetryInterval:       settings.Recovery.RetryInterval,
-		DeviceTimeout:       settings.Recovery.DeviceTimeout,
-		MaxReadingAge:       settings.NUT.MaxReadingAge,
+		StablePowerDelay:  settings.Recovery.StablePowerDelay,
+		MinBatteryPercent: settings.Recovery.MinBatteryPercent,
+		RetryInterval:     settings.Recovery.RetryInterval,
+		DeviceTimeout:     settings.Recovery.DeviceTimeout,
+		MaxReadingAge:     settings.NUT.MaxReadingAge,
 	}
 }
 
