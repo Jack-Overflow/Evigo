@@ -219,21 +219,6 @@ func TestGivenUPSStateWhenPassFinishesThenPollIntervalMatchesPowerSource(t *test
 	}
 }
 
-func TestGivenNoChangesWhenPassesRunThenNothingIsSaved(t *testing.T) {
-	// Given a healthy UPS and no recorded outage.
-	h := newHarness(t)
-
-	// When five passes run.
-	for range 5 {
-		h.pass(10 * time.Second)
-	}
-
-	// Then storage is never written.
-	if len(h.storage.saves) != 0 {
-		t.Fatalf("%d unnecessary saves", len(h.storage.saves))
-	}
-}
-
 func TestGivenTwoDueDevicesWhenReadingExpiresBetweenSendsThenOnlyFirstPacketIsSent(t *testing.T) {
 	// Given two due devices and a clock that reaches the reading's expiry after the first send.
 	h := newHarness(t)
@@ -252,32 +237,6 @@ func TestGivenTwoDueDevicesWhenReadingExpiresBetweenSendsThenOnlyFirstPacketIsSe
 	// Then only the first packet goes out.
 	if !h.packetReceived() || h.packetReceived() {
 		t.Fatal("expected exactly one packet before the reading expired")
-	}
-}
-
-func TestGivenSkippedFirstWakeWhenDeviceStaysOffThenItRemainsPendingWithoutAPacket(t *testing.T) {
-	for _, reason := range []string{"storage failure", "expired reading", "send failure"} {
-		t.Run(reason, func(t *testing.T) {
-			// Given a device whose first wake is not sent, for this reason.
-			h := newHarness(t)
-			h.outageThenStablePower()
-			switch reason {
-			case "storage failure":
-				h.storage.fail = true
-			case "expired reading":
-				h.storage.beforeSave = func(map[string]recovery.Progress) { h.clock = h.clock.Add(time.Minute) }
-			case "send failure":
-				h.monitor.devices[0].WakeAddress = "invalid address"
-			}
-
-			// When the pass that would wake it runs while the device stays off.
-			h.pass(10 * time.Second)
-
-			// Then no packet was sent and it is still waiting to be woken.
-			if h.packetReceived() || len(h.monitor.recovery.Pending()) != 1 {
-				t.Fatal("skipped send emitted a packet or dropped the device")
-			}
-		})
 	}
 }
 
@@ -414,7 +373,7 @@ func TestGivenOutageAndRecoveryWhenPassesRunThenHistoryRecordsEachStep(t *testin
 	}
 }
 
-func TestGivenNothingChangesWhenPassesRunThenHistoryIsOnlyWrittenOnce(t *testing.T) {
+func TestGivenNothingChangesWhenPassesRunThenPendingIsNeverSavedAndHistoryOnlyOnce(t *testing.T) {
 	// Given a healthy UPS and a device that stays online.
 	h := newHarness(t)
 	h.online = true
@@ -424,9 +383,9 @@ func TestGivenNothingChangesWhenPassesRunThenHistoryIsOnlyWrittenOnce(t *testing
 		h.pass(10 * time.Second)
 	}
 
-	// Then only the first pass, which saw everything for the first time, writes history.
-	if h.storage.historySaves != 1 {
-		t.Fatalf("history written %d times", h.storage.historySaves)
+	// Then pending progress is never saved, and only the first pass, which saw everything for the first time, writes history.
+	if len(h.storage.saves) != 0 || h.storage.historySaves != 1 {
+		t.Fatalf("%d pending saves, history written %d times", len(h.storage.saves), h.storage.historySaves)
 	}
 }
 

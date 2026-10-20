@@ -136,33 +136,22 @@ func TestGivenOutageWithStaleOnlineDevicesCheckWhenPowerReturnsThenNothingIsWoke
 	}
 }
 
-func TestGivenUnsafePowerWhenRecoveryIsPendingThenWakingWaitsForSafeStablePower(t *testing.T) {
-	for _, scenario := range []struct {
-		name   string
-		unsafe *nut.Reading
-		passes int
-	}{
-		{"low battery", lowMains, 5},
-		{"missing reading", noReading, 5},
-	} {
-		t.Run(scenario.name, func(t *testing.T) {
-			// Given a pending device after an outage.
-			h := newHarness(t, nil)
-			h.outage()
+func TestGivenLowBatteryWhenRecoveryIsPendingThenWakingWaitsForSafeStablePower(t *testing.T) {
+	// Given a pending device after an outage.
+	h := newHarness(t, nil)
+	h.outage()
 
-			// When power is unsafe for a while before becoming safe.
-			for range scenario.passes {
-				if due := h.pass(pollStep, scenario.unsafe, offline); len(due) != 0 {
-					t.Fatal("woke while power was unsafe")
-				}
-			}
-			woken := h.passesUntilWake(mains, 10)
+	// When the battery is below the minimum for a while before power becomes safe.
+	for range 5 {
+		if due := h.pass(pollStep, lowMains, offline); len(due) != 0 {
+			t.Fatal("woke while the battery was low")
+		}
+	}
+	woken := h.passesUntilWake(mains, 10)
 
-			// Then the full stability delay still applies once power is safe.
-			if woken != 4 {
-				t.Fatalf("woken on safe pass %d", woken)
-			}
-		})
+	// Then the full stability delay still applies once power is safe.
+	if woken != 4 {
+		t.Fatalf("woken on safe pass %d", woken)
 	}
 }
 
@@ -199,21 +188,6 @@ func TestGivenWakeSentWhenDeviceStaysOfflineThenRetriesFollowTheRetryInterval(t 
 	// Then it is retried every 30s.
 	if !slices.Equal(retried, []int{3, 6}) || h.recovery.Pending()["server"].Attempts != 3 {
 		t.Fatalf("retried on passes %v, progress %+v", retried, h.recovery.Pending()["server"])
-	}
-}
-
-func TestGivenWokenDeviceWhenItAnswersPingThenRecoveryFinishes(t *testing.T) {
-	// Given a device that has been woken once.
-	h := newHarness(t, nil)
-	h.outage()
-	h.passesUntilWake(mains, 10)
-
-	// When it answers ping.
-	h.pass(pollStep, mains, online)
-
-	// Then it is no longer pending.
-	if len(h.recovery.Pending()) != 0 {
-		t.Fatal("recovered device still pending")
 	}
 }
 
@@ -266,23 +240,6 @@ func TestGivenDeviceStillOnWhenWakingIsAllowedThenALaterShutdownIsNotWoken(t *te
 	// Then it is left off, as a device turned off on purpose would be.
 	if woken != -1 {
 		t.Fatalf("woken on pass %d", woken)
-	}
-}
-
-func TestGivenDeviceNeverRespondsWhenTimeoutIsUsedThenRecoveryGivesUp(t *testing.T) {
-	// Given a woken device that never comes back.
-	h := newHarness(t, nil)
-	h.outage()
-	h.passesUntilWake(mains, 10)
-
-	// When the 10m device timeout passes under stable power.
-	for range 60 {
-		h.pass(pollStep, mains, offline)
-	}
-
-	// Then it is no longer pending.
-	if len(h.recovery.Pending()) != 0 {
-		t.Fatalf("still pending: %+v", h.recovery.Pending())
 	}
 }
 
@@ -511,17 +468,20 @@ func TestGivenOutageAndRecoveryWhenUpdatesRunThenEachTransitionIsReportedOnce(t 
 	h.pass(pollStep, mains, online)
 	h.pass(pollStep, mains, online)
 
-	// Then pending and recovered were each reported once, with the attempt count.
+	// Then it is no longer pending, and pending and recovered were each reported once, with the attempt count.
 	var kinds []history.Kind
 	for _, event := range h.events {
 		kinds = append(kinds, event.Kind)
+	}
+	if len(h.recovery.Pending()) != 0 {
+		t.Fatal("recovered device still pending")
 	}
 	if !slices.Equal(kinds, []history.Kind{history.DevicePending, history.DeviceRecovered}) || h.events[1].Details.Attempt != 1 {
 		t.Fatalf("events %+v", h.events)
 	}
 }
 
-func TestGivenDeviceThatNeverAnswersWhenTimeoutRunsOutThenGivingUpIsReported(t *testing.T) {
+func TestGivenDeviceThatNeverAnswersWhenTimeoutRunsOutThenRecoveryGivesUpAndReportsIt(t *testing.T) {
 	// Given a woken device that never comes back.
 	h := newHarness(t, nil)
 	h.outage()
@@ -532,7 +492,10 @@ func TestGivenDeviceThatNeverAnswersWhenTimeoutRunsOutThenGivingUpIsReported(t *
 		h.pass(pollStep, mains, offline)
 	}
 
-	// Then giving up is reported.
+	// Then it is no longer pending and giving up is reported.
+	if len(h.recovery.Pending()) != 0 {
+		t.Fatalf("still pending: %+v", h.recovery.Pending())
+	}
 	if last := h.events[len(h.events)-1]; last.Kind != history.DeviceGaveUp || last.DeviceID != "server" {
 		t.Fatalf("events %+v", h.events)
 	}

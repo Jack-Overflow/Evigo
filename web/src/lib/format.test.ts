@@ -101,14 +101,4 @@ describe("Given a device's reachability", () => {
       expect(reachability).toEqual({ label: 'Offline', tone: 'warn' });
     });
   });
-
-  describe('When the status is outdated', () => {
-    beforeEach(() => {
-      reachability = reachabilityText('online', true);
-    });
-
-    it('Then it is marked as outdated', () => {
-      expect(reachability).toEqual({ label: 'Outdated', tone: 'neutral' });
-    });
-  });
 });

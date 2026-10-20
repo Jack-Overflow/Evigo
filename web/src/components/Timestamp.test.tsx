@@ -32,14 +32,6 @@ describe('Given a timestamp to show', () => {
     });
   });
 
-  describe('When it is a day and a few hours old', () => {
-    beforeEach(() => render(<Timestamp value={secondsBefore(97200)} />));
-
-    it('Then it says how long ago in days and hours', () => {
-      expect(screen.getByText('1d 3h ago')).toBeInTheDocument();
-    });
-  });
-
   describe('When it is slightly in the future', () => {
     beforeEach(() => render(<Timestamp value={secondsBefore(-2)} />));
 

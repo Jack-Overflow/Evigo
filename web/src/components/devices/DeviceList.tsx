@@ -8,7 +8,10 @@ export function DeviceList({
   status: Status;
   stale: boolean;
 }) {
-  const countingFrom = !stale && !status.power.block ? status.checked_at : null;
+  const countingFrom =
+    !stale && !status.power.block && wakingAllowedAtCheck(status)
+      ? status.checked_at
+      : null;
 
   return (
     <section aria-labelledby="devices-heading" className="flex flex-col gap-4">
@@ -27,4 +30,12 @@ export function DeviceList({
       </div>
     </section>
   );
+}
+
+function wakingAllowedAtCheck({ checked_at, power }: Status): boolean {
+  if (!checked_at || !power.wake_allowed_at) {
+    return false;
+  }
+
+  return Date.parse(power.wake_allowed_at) <= Date.parse(checked_at);
 }

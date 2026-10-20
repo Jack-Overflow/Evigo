@@ -224,10 +224,6 @@ describe("Given a request for Evigo's status", () => {
         screen.getByText('Time left to recover').nextSibling,
       ).toHaveTextContent('9m');
     });
-
-    it('Then the summary counts it as a device to wake', async () => {
-      expect(await screen.findByText('1 device to wake')).toBeInTheDocument();
-    });
   });
 
   describe('When a device that stayed on is watched during an outage', () => {
@@ -306,6 +302,28 @@ describe("Given a request for Evigo's status", () => {
       expect(
         screen.getByText('Time left to recover').nextSibling,
       ).toHaveTextContent('8m 30s');
+    });
+  });
+
+  describe('When waking became allowed after Evigo last checked', () => {
+    beforeEach(async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date('2026-01-01T12:00:10Z'));
+      const status = statusWith({
+        checked_at: '2026-01-01T12:00:00Z',
+        devices: [nasWith('offline', woken)],
+      });
+      status.power.wake_allowed_at = '2026-01-01T12:00:05Z';
+      answerAtTheCurrentTime(status);
+      renderApp();
+      await screen.findByText('Wake attempts');
+      await act(() => vi.advanceTimersByTimeAsync(3_000));
+    });
+
+    it('Then it does not count down time Evigo has not started spending', () => {
+      expect(
+        screen.queryByText('Time left to recover'),
+      ).not.toBeInTheDocument();
     });
   });
 

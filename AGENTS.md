@@ -76,7 +76,7 @@ Each loop pass, in `internal/monitor`, runs in a fixed order:
 3. `recovery.Update` applies the rules and returns the devices to wake.
 4. Save pending progress if it changed. If saving fails, stop here.
 5. Recheck the UPS reading's age before each wake packet, bound its deadline by
-   the reading's expiry, and record successful sends in recovery.
+   the reading's expiry, and record each send or failure in history.
 6. Save the pass's history events, if there are any.
 7. Replace the single status snapshot that the API reads.
 
