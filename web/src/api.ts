@@ -1,7 +1,12 @@
 export type Reachability = 'unknown' | 'offline' | 'online';
 
 export type PowerBlock =
-  'no_reading' | 'on_battery' | 'battery_low' | 'unsafe_status' | 'stabilising';
+  | 'no_reading'
+  | 'on_battery'
+  | 'battery_low'
+  | 'unsafe_status'
+  | 'settling'
+  | 'stabilising';
 
 export interface Power {
   ups: string;
@@ -10,6 +15,7 @@ export interface Power {
   battery_percent: number | null;
   read_at: string | null;
   on_battery: boolean;
+  charging: boolean;
   block: PowerBlock | null;
   stable_since: string | null;
   wake_allowed_at: string | null;
@@ -23,9 +29,11 @@ export interface Settings {
 }
 
 export interface DeviceRecovery {
+  state: 'watching' | 'waking';
   attempts: number;
   last_attempt_at: string | null;
   time_left_seconds: number;
+  gives_up_at: string | null;
 }
 
 export interface Device {
@@ -54,11 +62,11 @@ export type HistoryKind =
   | 'started'
   | 'ups_status'
   | 'reachability'
-  | 'device_pending'
-  | 'wake_requested'
+  | 'device_watched'
   | 'wake_sent'
   | 'wake_failed'
   | 'device_recovered'
+  | 'device_already_on'
   | 'device_gave_up';
 
 export interface HistoryEvent {
@@ -71,7 +79,7 @@ export interface HistoryEvent {
     status?: string;
     battery_percent?: number;
     reachability?: Reachability;
-    source?: 'automatic' | 'manual';
+    on_battery?: boolean;
     attempt?: number;
   };
 }

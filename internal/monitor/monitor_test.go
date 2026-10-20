@@ -356,20 +356,22 @@ func TestGivenOutageAndRecoveryWhenPassesRunThenHistoryRecordsEachStep(t *testin
 
 	// Then history records each step for the device, and each UPS status change.
 	want := []history.Kind{
-		history.Reachability, history.DevicePending, history.Reachability,
+		history.Reachability, history.DeviceWatched, history.Reachability,
 		history.WakeSent, history.Reachability, history.DeviceRecovered,
 	}
 	if got := h.storage.kinds("server"); !slices.Equal(got, want) {
 		t.Fatalf("history %v, want %v", got, want)
 	}
 	var statuses []string
+	var onBattery []bool
 	for _, event := range h.storage.history {
 		if event.Kind == history.UPSStatus {
 			statuses = append(statuses, event.Details.Status)
+			onBattery = append(onBattery, event.Details.OnBattery)
 		}
 	}
-	if !slices.Equal(statuses, []string{"OL", "OB DISCHRG", "OL"}) {
-		t.Fatalf("UPS statuses %v", statuses)
+	if !slices.Equal(statuses, []string{"OL", "OB DISCHRG", "OL"}) || !slices.Equal(onBattery, []bool{false, true, false}) {
+		t.Fatalf("UPS statuses %v, on battery %v", statuses, onBattery)
 	}
 }
 
@@ -403,7 +405,7 @@ func TestGivenHistoryUnavailableWhenPassesRunThenEventsAreKeptAndRecoveryContinu
 	if !h.packetReceived() {
 		t.Fatal("history failure blocked an automatic wake")
 	}
-	if !slices.Contains(h.storage.kinds("server"), history.DevicePending) {
+	if !slices.Contains(h.storage.kinds("server"), history.DeviceWatched) {
 		t.Fatalf("unsaved events were lost: %v", h.storage.kinds("server"))
 	}
 }
@@ -419,7 +421,7 @@ func TestGivenWakeThatFailsToSendWhenPassRunsThenHistoryRecordsTheFailure(t *tes
 
 	// Then history records a failed automatic wake with its attempt number.
 	last := h.storage.history[len(h.storage.history)-1]
-	if last.Kind != history.WakeFailed || last.Details.Source != history.Automatic || last.Details.Attempt != 1 {
+	if last.Kind != history.WakeFailed || last.Details.Attempt != 1 {
 		t.Fatalf("last event %+v", last)
 	}
 }
@@ -495,5 +497,35 @@ func TestGivenHistoryThatIsSlowAndFailsEveryPassWhenLoopRunsThenRecoveryStillWak
 	listener.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if _, _, err = listener.ReadFrom(make([]byte, 200)); err != nil {
 		t.Fatalf("no wake packet: %v", err)
+	}
+}
+
+func TestGivenUnreadableUPSWhenPassRunsThenHistoryRecordsAReadingWithNoStatus(t *testing.T) {
+	// Given a UPS that cannot be read.
+	h := newHarness(t)
+	h.ups.status = ""
+
+	// When a pass runs.
+	h.pass(0)
+
+	// Then history records a UPS event with no status or battery level.
+	event := h.storage.history[0]
+	if event.Kind != history.UPSStatus || event.Details.Status != "" || event.Details.BatteryPercent != nil {
+		t.Fatalf("first event %+v", event)
+	}
+}
+
+func TestGivenPowerBecomingStableWhenSnapshotsAreReadThenTheySayWhenTimeLeftIsBeingSpent(t *testing.T) {
+	// Given a device pending after an outage, with power not yet stable.
+	h := newHarness(t)
+	h.outageThenStablePower()
+	beforeStable := h.monitor.Snapshot().SpendingTimeLeft
+
+	// When the next pass finds power stable.
+	h.pass(10 * time.Second)
+
+	// Then only the snapshot from the stable pass says time left is being spent.
+	if beforeStable || !h.monitor.Snapshot().SpendingTimeLeft {
+		t.Fatalf("spending before stable %t, after %t", beforeStable, h.monitor.Snapshot().SpendingTimeLeft)
 	}
 }

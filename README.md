@@ -98,17 +98,17 @@ setting with its default, so you only need to fill in your own details:
 
 ```yaml
 nut:
-  host: 192.168.1.5     # your NUT server
-  ups: myups            # the UPS name as NUT knows it
+  host: 192.168.1.5 # your NUT server
+  ups: myups # the UPS name as NUT knows it
 devices:
   - id: nas
     name: NAS
     host: 192.168.1.20
-    mac: 'aa:bb:cc:dd:ee:01'
+    mac: "aa:bb:cc:dd:ee:01"
   - id: server
     name: Home server
     host: 192.168.1.21
-    mac: 'aa:bb:cc:dd:ee:02'
+    mac: "aa:bb:cc:dd:ee:02"
 ```
 
 Restart Evigo after changing the file. Run `evigo validate` first: for a mistyped
@@ -149,7 +149,7 @@ devices:
   - id: nas
     name: NAS
     host: 192.168.20.20
-    mac: 'aa:bb:cc:dd:ee:01'
+    mac: "aa:bb:cc:dd:ee:01"
     wol:
       broadcast: 192.168.20.255
 ```
@@ -196,12 +196,12 @@ web:
 | `GET /health`                         | `200` while Evigo is checking your UPS and devices normally, `503` otherwise; useful for uptime monitors. |
 
 Evigo keeps the newest 10,000 history events and deletes older ones as new ones
-arrive. When you upgrade from 0.1.0, the database is upgraded automatically and
-any recovery in progress is kept.
+arrive.
 
 ## Troubleshooting
 
 **A device wasn't woken.** Check that:
+
 - it was online when the power went out (devices that were already off are left
   off on purpose),
 - Wake-on-LAN works for it, for example by testing with another Wake-on-LAN tool,

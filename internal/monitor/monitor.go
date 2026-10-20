@@ -114,14 +114,14 @@ func (monitor *Monitor) Pass(ctx context.Context) time.Duration {
 func (monitor *Monitor) readUPS(ctx context.Context) *nut.Reading {
 	reading, err := monitor.ups.Read(ctx)
 	if err != nil {
-		if monitor.history.recordUPSStatusIfChanged(monitor.now(), "unavailable", nil) {
+		if monitor.history.recordUPSStatusIfChanged(monitor.now(), nil) {
 			monitor.log.Warn("UPS reading unavailable", "error", err)
 		}
 
 		return nil
 	}
 
-	if monitor.history.recordUPSStatusIfChanged(monitor.now(), reading.LogStatus(), &reading.Battery) {
+	if monitor.history.recordUPSStatusIfChanged(monitor.now(), &reading) {
 		monitor.log.Info("UPS status", "status", reading.LogStatus(), "battery", reading.Battery)
 	}
 
@@ -186,7 +186,7 @@ func (monitor *Monitor) sendWakes(ctx context.Context, due []*devices.Device, re
 			At:       monitor.now(),
 			Kind:     history.WakeSent,
 			DeviceID: device.ID,
-			Details:  history.Details{Source: history.Automatic, Attempt: monitor.saved[device.ID].Attempts},
+			Details:  history.Details{Attempt: monitor.saved[device.ID].Attempts},
 		}
 		if err != nil {
 			event.Kind = history.WakeFailed
@@ -207,6 +207,7 @@ func (monitor *Monitor) publishSnapshot(at time.Time, reading *nut.Reading, reac
 		CheckedAt:        at,
 		Reading:          reading,
 		SafeSince:        monitor.recovery.SafeSince(),
+		SpendingTimeLeft: monitor.recovery.SpendingTimeLeft(),
 		StorageOK:        monitor.storageOK,
 		RecoverySettings: monitor.recovery.Settings(),
 	}

@@ -15,22 +15,16 @@ const badgeColours: Record<Tone, string> = {
 export function DeviceCard({
   device,
   stale,
-  countingFrom,
 }: {
   device: Device;
   stale: boolean;
-  countingFrom: string | null;
 }) {
   const now = useServerNow();
   const reachability = reachabilityText(device.reachability, stale);
   const recovery = device.recovery;
   const timeLeftSeconds =
-    recovery && countingFrom
-      ? Math.max(
-          0,
-          recovery.time_left_seconds -
-            Math.max(0, (now - Date.parse(countingFrom)) / 1000),
-        )
+    recovery?.gives_up_at && !stale
+      ? Math.max(0, (Date.parse(recovery.gives_up_at) - now) / 1000)
       : null;
 
   return (
@@ -59,7 +53,7 @@ export function DeviceCard({
         <Detail label="MAC address">
           <span className="font-mono">{device.mac}</span>
         </Detail>
-        {recovery && device.reachability !== 'online' && (
+        {recovery?.state === 'waking' && (
           <RecoveryDetails
             recovery={recovery}
             timeLeftSeconds={timeLeftSeconds}

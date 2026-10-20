@@ -13,6 +13,7 @@ type Snapshot struct {
 	CheckedAt        time.Time
 	Reading          *nut.Reading
 	SafeSince        time.Time
+	SpendingTimeLeft bool
 	StorageOK        bool
 	RecoverySettings recovery.Settings
 	Devices          []Device

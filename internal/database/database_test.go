@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,7 +195,7 @@ func TestGivenSavedHistoryWhenPagedThenEventsComeNewestFirstWithACursor(t *testi
 			At:       start.Add(time.Duration(index) * time.Second),
 			Kind:     history.WakeSent,
 			DeviceID: "server",
-			Details:  history.Details{Source: history.Automatic, Attempt: index + 1},
+			Details:  history.Details{Attempt: index + 1},
 		})
 	}
 	if err := opened.AppendHistory(context.Background(), events); err != nil {
@@ -219,7 +220,7 @@ func TestGivenSavedHistoryWhenPagedThenEventsComeNewestFirstWithACursor(t *testi
 	if first.Events[0].Details.Attempt != 5 || first.Events[1].Details.Attempt != 4 || second.Events[0].Details.Attempt != 3 {
 		t.Fatalf("pages %+v %+v", first.Events, second.Events)
 	}
-	if !first.Events[0].At.Equal(start.Add(4*time.Second)) || first.Events[0].DeviceID != "server" || first.Events[0].Details.Source != history.Automatic {
+	if !first.Events[0].At.Equal(start.Add(4*time.Second)) || first.Events[0].DeviceID != "server" {
 		t.Fatalf("event %+v", first.Events[0])
 	}
 	if len(last.Events) != 1 || last.NextBefore != 0 {
@@ -249,43 +250,6 @@ func TestGivenMoreEventsThanKeptWhenAppendedThenOnlyTheNewestRemain(t *testing.T
 	}
 }
 
-func TestGivenVersionThreeDatabaseWhenOpenedThenItIsUpgradedAndPendingProgressIsKept(t *testing.T) {
-	// Given a database exactly as Evigo 0.1.0 created it, with a pending device.
-	path := filepath.Join(t.TempDir(), "evigo.db")
-	address := url.URL{Scheme: "file", Path: path}
-	legacy, err := sql.Open("sqlite", address.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	setup := pendingSchema + fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=3;", applicationID) +
-		"INSERT INTO pending VALUES ('server', 1, 1700000000000000000, 60000000000, 0);"
-	if _, err = legacy.Exec(setup); err != nil {
-		t.Fatal(err)
-	}
-	legacy.Close()
-
-	// When the current version opens it.
-	opened, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer opened.Close()
-
-	// Then pending progress is kept, history works, and the version is current.
-	pending, err := opened.LoadPending(context.Background())
-	if err != nil || pending["server"].Attempts != 1 || pending["server"].TimeLeft != time.Minute {
-		t.Fatalf("pending %+v, err %v", pending, err)
-	}
-	if err = opened.AppendHistory(context.Background(), []history.Event{{At: time.Now(), Kind: history.Started}}); err != nil {
-		t.Fatal(err)
-	}
-	var version int
-	opened.sqlite.QueryRow("PRAGMA user_version").Scan(&version)
-	if version != schemaVersion {
-		t.Fatalf("version %d", version)
-	}
-}
-
 func TestGivenDatabaseFromANewerEvigoWhenOpenedThenItIsRefused(t *testing.T) {
 	// Given a database written by a future schema version.
 	path := filepath.Join(t.TempDir(), "evigo.db")
@@ -305,22 +269,22 @@ func TestGivenDatabaseFromANewerEvigoWhenOpenedThenItIsRefused(t *testing.T) {
 	}
 }
 
-func TestGivenVersionThreeDatabaseWithDamagedPendingTableWhenOpenedThenItIsRefusedUnchanged(t *testing.T) {
+func TestGivenEvigoDatabaseWithDamagedPendingTableWhenOpenedThenItIsRefusedUnchanged(t *testing.T) {
 	for name, setup := range map[string]string{
 		"missing table":  "",
 		"wrong columns":  "CREATE TABLE pending (device TEXT);",
-		"unreadable row": pendingSchema + "INSERT INTO pending VALUES ('server', 'many', 0, 0, 0);",
+		"unreadable row": schema + "INSERT INTO pending VALUES ('server', 'many', 0, 0);",
 	} {
 		t.Run(name, func(t *testing.T) {
-			// Given a file claiming to be an Evigo 0.1.0 database, with a damaged pending table.
+			// Given a file claiming to be an Evigo database, with a damaged pending table.
 			path := filepath.Join(t.TempDir(), "evigo.db")
 			address := url.URL{Scheme: "file", Path: path}
 			legacy, err := sql.Open("sqlite", address.String())
 			if err != nil {
 				t.Fatal(err)
 			}
-			versioning := fmt.Sprintf("PRAGMA journal_mode=DELETE; PRAGMA application_id=%d; PRAGMA user_version=3;", applicationID)
-			if _, err = legacy.Exec(versioning + "CREATE TABLE marker (id INTEGER);" + setup); err != nil {
+			versioning := fmt.Sprintf("PRAGMA journal_mode=DELETE; PRAGMA application_id=%d; PRAGMA user_version=%d;", applicationID, schemaVersion)
+			if _, err = legacy.Exec(versioning + setup); err != nil {
 				t.Fatal(err)
 			}
 			legacy.Close()
@@ -335,6 +299,44 @@ func TestGivenVersionThreeDatabaseWithDamagedPendingTableWhenOpenedThenItIsRefus
 			}
 			if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
 				t.Fatal("damaged database was modified")
+			}
+		})
+	}
+}
+
+func TestGivenEvigoDatabaseWithUnfamiliarLayoutWhenOpenedThenItIsRefusedUnchanged(t *testing.T) {
+	for name, setup := range map[string]string{
+		"pending without a primary key": strings.Replace(schema, "device_id TEXT PRIMARY KEY", "device_id TEXT NOT NULL", 1),
+		"an extra table":                schema + "CREATE TABLE notes (text TEXT);",
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Given a file marked as a current Evigo database whose tables are laid out differently.
+			path := filepath.Join(t.TempDir(), "evigo.db")
+			address := url.URL{Scheme: "file", Path: path}
+			unfamiliar, err := sql.Open("sqlite", address.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = unfamiliar.Exec(setup + fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d;", applicationID, schemaVersion)); err != nil {
+				t.Fatal(err)
+			}
+			unfamiliar.Close()
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// When Evigo opens it.
+			opened, err := Open(path)
+
+			// Then it is refused and the file is unchanged.
+			if err == nil {
+				opened.Close()
+				t.Fatal("unfamiliar layout accepted")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("refused database was modified")
 			}
 		})
 	}

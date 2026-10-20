@@ -203,9 +203,12 @@ func TestGivenDeviceThatStayedOnWhenWakingIsAllowedThenItIsDoneWithoutAWake(t *t
 		woken = append(woken, h.pass(pollStep, mains, online)...)
 	}
 
-	// Then it is no longer pending and was never woken.
+	// Then it is no longer pending, was never woken, and is reported as already on.
 	if len(woken) != 0 || len(h.recovery.Pending()) != 0 {
 		t.Fatalf("woken %v, pending %v", woken, h.recovery.Pending())
+	}
+	if last := h.events[len(h.events)-1]; last.Kind != history.DeviceAlreadyOn || last.DeviceID != "server" {
+		t.Fatalf("events %+v", h.events)
 	}
 }
 
@@ -433,6 +436,7 @@ func TestGivenPowerStateWhenBlockCheckedThenTheReasonMatchesWhyWakingIsNotAllowe
 		{"on battery", onBattery, 0, stableSince, OnBattery},
 		{"low battery", lowMains, 0, stableSince, BatteryLow},
 		{"alarm flag", &nut.Reading{Status: "OL ALARM", Battery: 100}, 0, stableSince, UnsafeStatus},
+		{"settling onto mains", &nut.Reading{Status: "OL CHRG DISCHRG", Battery: 60}, 0, stableSince, Settling},
 		{"no reading", nil, 0, stableSince, NoReading},
 		{"expired reading", mains, time.Minute, stableSince, NoReading},
 		{"reading exactly at max age", mains, 30 * time.Second, stableSince, NoReading},
@@ -476,7 +480,7 @@ func TestGivenOutageAndRecoveryWhenUpdatesRunThenEachTransitionIsReportedOnce(t 
 	if len(h.recovery.Pending()) != 0 {
 		t.Fatal("recovered device still pending")
 	}
-	if !slices.Equal(kinds, []history.Kind{history.DevicePending, history.DeviceRecovered}) || h.events[1].Details.Attempt != 1 {
+	if !slices.Equal(kinds, []history.Kind{history.DeviceWatched, history.DeviceRecovered}) || h.events[1].Details.Attempt != 1 {
 		t.Fatalf("events %+v", h.events)
 	}
 }
@@ -498,5 +502,39 @@ func TestGivenDeviceThatNeverAnswersWhenTimeoutRunsOutThenRecoveryGivesUpAndRepo
 	}
 	if last := h.events[len(h.events)-1]; last.Kind != history.DeviceGaveUp || last.DeviceID != "server" {
 		t.Fatalf("events %+v", h.events)
+	}
+}
+
+func TestGivenPowerReturningWhenTheStabilityDelayPassesThenRecoveryStartsSpendingTimeLeft(t *testing.T) {
+	// Given a pending device after an outage.
+	h := newHarness(t, nil)
+	h.outage()
+
+	// When power is safe for 20s, then for the full 30s stability delay.
+	h.pass(pollStep, mains, offline)
+	h.pass(pollStep, mains, offline)
+	h.pass(pollStep, mains, offline)
+	spendingBeforeStable := h.recovery.SpendingTimeLeft()
+	h.pass(pollStep, mains, offline)
+
+	// Then time left is only being spent once the delay has passed.
+	if spendingBeforeStable || !h.recovery.SpendingTimeLeft() {
+		t.Fatalf("spending before stable %t, after %t", spendingBeforeStable, h.recovery.SpendingTimeLeft())
+	}
+}
+
+func TestGivenPendingDeviceWhenPingBecomesUnknownAfterAWakeThenItIsStillBeingWoken(t *testing.T) {
+	// Given a device woken once after an outage.
+	h := newHarness(t, nil)
+	h.outage()
+	h.passesUntilWake(mains, 10)
+
+	// When its next ping result is unknown.
+	due := h.pass(pollStep, mains, devices.Unknown)
+
+	// Then no packet is due, but it is still being woken rather than watched.
+	progress, pending := h.recovery.Pending()["server"]
+	if len(due) != 0 || !pending || progress.State(devices.Unknown) != Waking {
+		t.Fatalf("due %v, pending %t, progress %+v", due, pending, progress)
 	}
 }

@@ -8,19 +8,12 @@ const (
 	Started         Kind = "started"
 	UPSStatus       Kind = "ups_status"
 	Reachability    Kind = "reachability"
-	DevicePending   Kind = "device_pending"
-	WakeRequested   Kind = "wake_requested"
+	DeviceWatched   Kind = "device_watched"
 	WakeSent        Kind = "wake_sent"
 	WakeFailed      Kind = "wake_failed"
 	DeviceRecovered Kind = "device_recovered"
+	DeviceAlreadyOn Kind = "device_already_on"
 	DeviceGaveUp    Kind = "device_gave_up"
-)
-
-type Source string
-
-const (
-	Automatic Source = "automatic"
-	Manual    Source = "manual"
 )
 
 type Event struct {
@@ -36,7 +29,7 @@ type Details struct {
 	Status         string   `json:"status,omitempty"`
 	BatteryPercent *float64 `json:"battery_percent,omitempty"`
 	Reachability   string   `json:"reachability,omitempty"`
-	Source         Source   `json:"source,omitempty"`
+	OnBattery      bool     `json:"on_battery,omitempty"`
 	Attempt        int      `json:"attempt,omitempty"`
 }
 

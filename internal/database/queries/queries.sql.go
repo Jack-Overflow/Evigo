@@ -41,8 +41,8 @@ func (q *Queries) InsertHistory(ctx context.Context, arg InsertHistoryParams) er
 }
 
 const insertPending = `-- name: InsertPending :exec
-INSERT INTO pending (device_id, attempts, last_attempt_ns, time_left_ns, grace_left_ns)
-VALUES (?, ?, ?, ?, 0)
+INSERT INTO pending (device_id, attempts, last_attempt_ns, time_left_ns)
+VALUES (?, ?, ?, ?)
 `
 
 type InsertPendingParams struct {
@@ -142,22 +142,15 @@ const listPending = `-- name: ListPending :many
 SELECT device_id, attempts, last_attempt_ns, time_left_ns FROM pending
 `
 
-type ListPendingRow struct {
-	DeviceID      string
-	Attempts      int64
-	LastAttemptNs int64
-	TimeLeftNs    int64
-}
-
-func (q *Queries) ListPending(ctx context.Context) ([]ListPendingRow, error) {
+func (q *Queries) ListPending(ctx context.Context) ([]Pending, error) {
 	rows, err := q.db.QueryContext(ctx, listPending)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListPendingRow
+	var items []Pending
 	for rows.Next() {
-		var i ListPendingRow
+		var i Pending
 		if err := rows.Scan(
 			&i.DeviceID,
 			&i.Attempts,

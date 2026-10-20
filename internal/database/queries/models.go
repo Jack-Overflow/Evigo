@@ -17,5 +17,4 @@ type Pending struct {
 	Attempts      int64
 	LastAttemptNs int64
 	TimeLeftNs    int64
-	GraceLeftNs   int64
 }

@@ -29,6 +29,7 @@ type powerResponse struct {
 	BatteryPercent *float64   `json:"battery_percent"`
 	ReadAt         *time.Time `json:"read_at"`
 	OnBattery      bool       `json:"on_battery"`
+	Charging       bool       `json:"charging"`
 	Block          *string    `json:"block"`
 	StableSince    *time.Time `json:"stable_since"`
 	WakeAllowedAt  *time.Time `json:"wake_allowed_at"`
@@ -51,9 +52,11 @@ type deviceResponse struct {
 }
 
 type deviceRecoveryResponse struct {
-	Attempts        int        `json:"attempts"`
-	LastAttemptAt   *time.Time `json:"last_attempt_at"`
-	TimeLeftSeconds int        `json:"time_left_seconds"`
+	State           recovery.State `json:"state"`
+	Attempts        int            `json:"attempts"`
+	LastAttemptAt   *time.Time     `json:"last_attempt_at"`
+	TimeLeftSeconds int            `json:"time_left_seconds"`
+	GivesUpAt       *time.Time     `json:"gives_up_at"`
 }
 
 func (server *Server) statusResponse(latest snapshot.Snapshot) statusResponse {
@@ -72,8 +75,9 @@ func (server *Server) statusResponse(latest snapshot.Snapshot) statusResponse {
 		},
 		Devices: []deviceResponse{},
 	}
+	spendingTimeLeft := latest.SpendingTimeLeft && latest.PowerBlock(server.now()) == recovery.NoBlock
 	for _, device := range latest.Devices {
-		response.Devices = append(response.Devices, deviceResponseFor(device))
+		response.Devices = append(response.Devices, deviceResponseFor(device, latest.CheckedAt, spendingTimeLeft))
 	}
 
 	return response
@@ -96,6 +100,7 @@ func (server *Server) powerResponse(latest snapshot.Snapshot) powerResponse {
 	power.BatteryPercent = new(reading.Battery)
 	power.ReadAt = timeOrNil(reading.At)
 	power.OnBattery = reading.OnBattery()
+	power.Charging = reading.Charging()
 	if power.Available && !latest.SafeSince.IsZero() {
 		power.StableSince = timeOrNil(latest.SafeSince)
 		power.WakeAllowedAt = timeOrNil(latest.SafeSince.Add(latest.RecoverySettings.StablePowerDelay))
@@ -104,7 +109,7 @@ func (server *Server) powerResponse(latest snapshot.Snapshot) powerResponse {
 	return power
 }
 
-func deviceResponseFor(device snapshot.Device) deviceResponse {
+func deviceResponseFor(device snapshot.Device, checkedAt time.Time, spendingTimeLeft bool) deviceResponse {
 	response := deviceResponse{
 		ID:           device.Device.ID,
 		Name:         device.Device.Name,
@@ -114,9 +119,13 @@ func deviceResponseFor(device snapshot.Device) deviceResponse {
 	}
 	if progress := device.Pending; progress != nil {
 		response.Recovery = &deviceRecoveryResponse{
+			State:           progress.State(device.Reachability),
 			Attempts:        progress.Attempts,
 			LastAttemptAt:   timeOrNil(progress.LastAttempt),
 			TimeLeftSeconds: seconds(progress.TimeLeft),
+		}
+		if spendingTimeLeft {
+			response.Recovery.GivesUpAt = timeOrNil(checkedAt.Add(progress.TimeLeft))
 		}
 	}
 

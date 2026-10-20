@@ -17,13 +17,29 @@ const (
 	OnBattery    Block = "on_battery"
 	BatteryLow   Block = "battery_low"
 	UnsafeStatus Block = "unsafe_status"
+	Settling     Block = "settling"
 	Stabilising  Block = "stabilising"
+)
+
+type State string
+
+const (
+	Watching State = "watching"
+	Waking   State = "waking"
 )
 
 type Progress struct {
 	Attempts    int
 	LastAttempt time.Time
 	TimeLeft    time.Duration
+}
+
+func (progress Progress) State(reachability devices.Reachability) State {
+	if reachability == devices.Offline || progress.Attempts > 0 {
+		return Waking
+	}
+
+	return Watching
 }
 
 type Outcome struct {
@@ -111,6 +127,8 @@ func (settings Settings) PowerBlock(at time.Time, reading *nut.Reading, safeSinc
 		return OnBattery
 	case reading.Safe(0) && !reading.Safe(settings.MinBatteryPercent):
 		return BatteryLow
+	case !reading.Safe(0) && reading.Settling():
+		return Settling
 	case !reading.Safe(settings.MinBatteryPercent):
 		return UnsafeStatus
 	case safeSince.IsZero() || at.Sub(safeSince) < settings.StablePowerDelay:
@@ -122,6 +140,10 @@ func (settings Settings) PowerBlock(at time.Time, reading *nut.Reading, safeSinc
 
 func (recovery *Recovery) Settings() Settings {
 	return recovery.settings
+}
+
+func (recovery *Recovery) SpendingTimeLeft() bool {
+	return recovery.wasStable
 }
 
 func (recovery *Recovery) SafeSince() time.Time {
@@ -172,7 +194,7 @@ func (recovery *Recovery) addOutageDevicesToPending(at time.Time) []history.Even
 		if recovery.devicesOnline[device.ID] && recovery.pending[device.ID] == nil {
 			recovery.pending[device.ID] = &Progress{TimeLeft: recovery.settings.DeviceTimeout}
 			recovery.log.Info("device will be woken after the outage", "device", device.ID)
-			events = append(events, history.Event{At: at, Kind: history.DevicePending, DeviceID: device.ID})
+			events = append(events, history.Event{At: at, Kind: history.DeviceWatched, DeviceID: device.ID})
 		}
 	}
 
@@ -199,6 +221,10 @@ func (recovery *Recovery) updatePendingDevices(pass Pass) ([]*devices.Device, []
 		}
 
 		switch reachability := pass.Reachability[device.ID]; {
+		case reachability == devices.Online && progress.Attempts == 0:
+			delete(recovery.pending, device.ID)
+			recovery.log.Info("device was already on", "device", device.ID)
+			events = append(events, history.Event{At: pass.At, Kind: history.DeviceAlreadyOn, DeviceID: device.ID})
 		case reachability == devices.Online:
 			delete(recovery.pending, device.ID)
 			recovery.log.Info("device is back online", "device", device.ID, "attempts", progress.Attempts)

@@ -21,29 +21,17 @@ import (
 	"github.com/Jack-Overflow/Evigo/internal/recovery"
 )
 
-//go:embed schema/003_pending.sql
-var pendingSchema string
-
-//go:embed schema/004_history.sql
-var historySchema string
-
-var schemaSteps = []struct {
-	version int
-	sql     string
-}{
-	{3, pendingSchema},
-	{4, historySchema},
-}
+//go:embed schema.sql
+var schema string
 
 //go:embed journal.sql
 var journal string
 
 const (
-	applicationID           = 0x45564731
-	schemaVersion           = 4
-	oldestUpgradableVersion = 3
-	keptHistoryEvents       = 10000
-	operationTimeout        = 3 * time.Second
+	applicationID     = 0x45564731
+	schemaVersion     = 4
+	keptHistoryEvents = 10000
+	operationTimeout  = 3 * time.Second
 )
 
 var errNotSQLite = errors.New("state file is not a SQLite database; preserve it and restore a valid backup")
@@ -304,55 +292,40 @@ func prepare(ctx context.Context, sqliteDatabase *sql.DB) error {
 	case err != nil:
 		return fmt.Errorf("cannot read SQLite database: %w", err)
 	case storedApplication == 0 && storedVersion == 0 && tables == 0:
-		return applySchema(ctx, sqliteDatabase, 0)
-	case storedApplication != applicationID || storedVersion < oldestUpgradableVersion || storedVersion > schemaVersion:
+		return createSchema(ctx, sqliteDatabase)
+	case storedApplication != applicationID || storedVersion != schemaVersion:
 		return errors.New("incompatible state database; move it aside to start fresh")
-	case !readable(ctx, sqliteDatabase, storedVersion):
+	case !readable(ctx, sqliteDatabase):
 		return errors.New("damaged state database; preserve it and restore a valid backup, or move it aside to start fresh")
-	case storedVersion < schemaVersion:
-		return applySchema(ctx, sqliteDatabase, storedVersion)
 	}
 
 	return nil
 }
 
-func readable(ctx context.Context, sqliteDatabase *sql.DB, version int) bool {
+func readable(ctx context.Context, sqliteDatabase *sql.DB) bool {
 	var integrity string
 	if sqliteDatabase.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&integrity) != nil || integrity != "ok" {
 		return false
 	}
 
-	if _, err := queries.New(sqliteDatabase).ListPending(ctx); err != nil {
+	if !layoutMatches(ctx, sqliteDatabase) {
 		return false
 	}
 
-	if version >= 4 {
-		rows, err := sqliteDatabase.QueryContext(ctx, "SELECT id, at_ns, kind, device_id, details FROM history LIMIT 0")
-		if err != nil {
-			return false
-		}
+	_, err := queries.New(sqliteDatabase).ListPending(ctx)
 
-		rows.Close()
-	}
-
-	return true
+	return err == nil
 }
 
-func applySchema(ctx context.Context, sqliteDatabase *sql.DB, fromVersion int) error {
+func createSchema(ctx context.Context, sqliteDatabase *sql.DB) error {
 	transaction, err := sqliteDatabase.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
 	defer transaction.Rollback()
-	for _, step := range schemaSteps {
-		if step.version <= fromVersion {
-			continue
-		}
-
-		if _, err = transaction.ExecContext(ctx, step.sql); err != nil {
-			return fmt.Errorf("upgrade state database to version %d: %w", step.version, err)
-		}
+	if _, err = transaction.ExecContext(ctx, schema); err != nil {
+		return fmt.Errorf("create state database: %w", err)
 	}
 
 	versioning := fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)

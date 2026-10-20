@@ -12,13 +12,6 @@
   Host and Origin checks stop DNS rebinding and cross-site requests.
 - History of UPS status changes, reachability changes, outages, wakes and
   results at `GET /api/history`, keeping the newest 10,000 events.
-- Databases from 0.1.0 are checked and upgraded automatically, keeping any
-  recovery in progress.
-- `recovery.shutdown_grace_period` is removed, and configurations that still set
-  it are rejected. Devices still answering ping when the stability delay ends
-  are left as they are instead of being watched for the grace period, so set
-  `stable_power_delay` longer than a shutdown takes to finish after mains
-  returns.
 
 ## 0.1.0
 

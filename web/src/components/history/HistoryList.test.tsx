@@ -90,7 +90,7 @@ describe("Given a request for Evigo's history", () => {
           at: minutesAgo(2),
           kind: 'wake_sent',
           device_id: 'nas',
-          details: { source: 'automatic', attempt: 2 },
+          details: { attempt: 2 },
         },
         {
           id: 3,
@@ -103,7 +103,11 @@ describe("Given a request for Evigo's history", () => {
           id: 2,
           at: minutesAgo(9),
           kind: 'ups_status',
-          details: { status: 'OB DISCHRG', battery_percent: 80 },
+          details: {
+            status: 'OB DISCHRG',
+            battery_percent: 80,
+            on_battery: true,
+          },
         },
         {
           id: 1,
@@ -115,14 +119,14 @@ describe("Given a request for Evigo's history", () => {
         {
           id: 0,
           at: minutesAgo(40),
-          kind: 'device_recovered',
+          kind: 'device_already_on',
           device_id: 'nas',
           details: {},
         },
         {
           id: -1,
           at: minutesAgo(50),
-          kind: 'device_pending',
+          kind: 'device_watched',
           device_id: 'nas',
           details: {},
         },
@@ -136,7 +140,7 @@ describe("Given a request for Evigo's history", () => {
         'NAS is offline5m ago',
         'UPS: On battery · Discharging · 80% charge9m ago',
         'removed-device recovered30m ago',
-        'NAS is on, no wake needed40m ago',
+        'NAS was already on, no wake needed40m ago',
         'Watching NAS until power is stable50m ago',
       ]);
     });
@@ -149,7 +153,7 @@ describe("Given a request for Evigo's history", () => {
           id: 1,
           at: minutesAgo(1),
           kind: 'ups_status',
-          details: { status: 'unavailable' },
+          details: {},
         },
       ]);
       renderHistory();

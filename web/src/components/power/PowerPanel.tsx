@@ -23,7 +23,7 @@ export function PowerPanel({
   const { power, settings, devices } = status;
   const headline = powerHeadline(power);
   const devicesToWake = devices.filter(
-    (device) => device.recovery && device.reachability !== 'online',
+    (device) => device.recovery?.state === 'waking',
   ).length;
   const wakeAllowedInSeconds = power.wake_allowed_at
     ? (new Date(power.wake_allowed_at).getTime() - now) / 1000
@@ -58,7 +58,7 @@ export function PowerPanel({
           percent={power.battery_percent}
           minimum={settings.min_battery_percent}
           valid={power.available && !stale}
-          charging={power.status.includes('CHRG')}
+          charging={power.charging}
         />
       </Card>
     </section>
@@ -89,15 +89,12 @@ function powerHeadline(power: Power): { title: string; tone: Tone } {
     return { title: 'Power is OK', tone: 'good' };
   }
 
-  if (power.block === 'unsafe_status' && upsSettling(power.status)) {
-    return { title: 'Waiting for the UPS to settle', tone: 'neutral' };
-  }
-
   const headlines: Record<PowerBlock, { title: string; tone: Tone }> = {
     stabilising: { title: 'Checking power is stable', tone: 'neutral' },
     on_battery: { title: 'Running on battery', tone: 'warn' },
     battery_low: { title: 'Battery is recharging', tone: 'warn' },
     unsafe_status: { title: 'UPS reports a problem', tone: 'warn' },
+    settling: { title: 'Waiting for the UPS to settle', tone: 'neutral' },
     no_reading: { title: 'Power status unknown', tone: 'warn' },
   };
 
@@ -135,6 +132,7 @@ function blockText(
     on_battery: 'Devices are woken once mains power is back and stable',
     battery_low: `Waiting for the battery to reach ${settings.min_battery_percent}% before waking anything`,
     unsafe_status: 'Waking is paused until the UPS reports normal mains power',
+    settling: 'Waking is paused until the UPS settles on mains power',
     no_reading: 'Evigo cannot get a fresh UPS reading, so waking is paused',
   };
 
@@ -147,12 +145,4 @@ function wakeAllowedText(seconds: number): string {
   }
 
   return `Waking is allowed in ${durationText(Math.ceil(seconds))}`;
-}
-
-const settlingFlags = ['OL', 'CHRG', 'DISCHRG', 'TRIM', 'BOOST'];
-
-function upsSettling(flags: string[]): boolean {
-  return (
-    flags.includes('OL') && flags.every((flag) => settlingFlags.includes(flag))
-  );
 }

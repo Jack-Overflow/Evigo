@@ -7,9 +7,13 @@ import (
 
 	"github.com/Jack-Overflow/Evigo/internal/devices"
 	"github.com/Jack-Overflow/Evigo/internal/history"
+	"github.com/Jack-Overflow/Evigo/internal/nut"
 )
 
-const maxUnsavedEvents = 1000
+const (
+	maxUnsavedEvents = 1000
+	noReadingStatus  = "no reading"
+)
 
 type historyRecorder struct {
 	storage          Storage
@@ -23,17 +27,20 @@ func (recorder *historyRecorder) record(events ...history.Event) {
 	recorder.events = append(recorder.events, events...)
 }
 
-func (recorder *historyRecorder) recordUPSStatusIfChanged(at time.Time, status string, batteryPercent *float64) bool {
+func (recorder *historyRecorder) recordUPSStatusIfChanged(at time.Time, reading *nut.Reading) bool {
+	status := noReadingStatus
+	var details history.Details
+	if reading != nil {
+		status = reading.LogStatus()
+		details = history.Details{Status: status, BatteryPercent: &reading.Battery, OnBattery: reading.OnBattery()}
+	}
+
 	if status == recorder.lastUPSStatus {
 		return false
 	}
 
 	recorder.lastUPSStatus = status
-	recorder.record(history.Event{
-		At:      at,
-		Kind:    history.UPSStatus,
-		Details: history.Details{Status: status, BatteryPercent: batteryPercent},
-	})
+	recorder.record(history.Event{At: at, Kind: history.UPSStatus, Details: details})
 
 	return true
 }

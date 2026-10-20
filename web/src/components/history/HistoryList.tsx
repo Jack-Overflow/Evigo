@@ -18,10 +18,10 @@ const icons: Record<HistoryKind, LucideIcon> = {
   started: Activity,
   ups_status: PlugZap,
   reachability: Server,
-  device_pending: ShieldCheck,
+  device_watched: ShieldCheck,
   device_recovered: ShieldCheck,
+  device_already_on: ShieldCheck,
   device_gave_up: ShieldCheck,
-  wake_requested: Power,
   wake_sent: Power,
   wake_failed: Power,
 };
@@ -120,18 +120,16 @@ function historyText(event: HistoryEvent, deviceName: string): string {
       return upsHistoryText(status, battery_percent);
     case 'reachability':
       return `${deviceName} is ${reachabilityText(reachability ?? 'unknown', false).label.toLowerCase()}`;
-    case 'device_pending':
+    case 'device_watched':
       return `Watching ${deviceName} until power is stable`;
-    case 'wake_requested':
-      return `Wake requested for ${deviceName}`;
     case 'wake_sent':
       return `Wake sent to ${deviceName} (attempt ${attempt})`;
     case 'wake_failed':
       return `Wake to ${deviceName} failed (attempt ${attempt})`;
     case 'device_recovered':
-      return attempt
-        ? `${deviceName} recovered`
-        : `${deviceName} is on, no wake needed`;
+      return `${deviceName} recovered`;
+    case 'device_already_on':
+      return `${deviceName} was already on, no wake needed`;
     case 'device_gave_up':
       return `Gave up on ${deviceName} after ${attempt} ${attempt === 1 ? 'attempt' : 'attempts'}`;
   }
@@ -141,7 +139,7 @@ function upsHistoryText(
   status: string | undefined,
   batteryPercent: number | undefined,
 ): string {
-  if (!status || status === 'unavailable') {
+  if (!status) {
     return 'UPS: no reading';
   }
 
@@ -155,13 +153,11 @@ function upsHistoryText(
 }
 
 function historyIsProblem(event: HistoryEvent): boolean {
-  const { status, reachability } = event.details;
+  const { status, on_battery, reachability } = event.details;
 
   switch (event.kind) {
     case 'ups_status':
-      return (
-        !status || status === 'unavailable' || status.split(' ').includes('OB')
-      );
+      return !status || Boolean(on_battery);
     case 'reachability':
       return reachability !== 'online';
     case 'wake_failed':

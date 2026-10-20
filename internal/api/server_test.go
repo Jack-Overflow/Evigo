@@ -58,10 +58,11 @@ func testServer(listen string, allowedHosts ...string) (*Server, *fakeSnapshots)
 func testServerWithHistory(listen string, allowedHosts ...string) (*Server, *fakeSnapshots, *fakeHistory) {
 	mac, _ := net.ParseMAC("02:00:00:00:00:10")
 	fake := &fakeSnapshots{latest: snapshot.Snapshot{
-		CheckedAt: now.Add(-5 * time.Second),
-		Reading:   &nut.Reading{At: now.Add(-5 * time.Second), Status: "OL CHRG", Battery: 80},
-		SafeSince: now.Add(-time.Minute),
-		StorageOK: true,
+		CheckedAt:        now.Add(-5 * time.Second),
+		Reading:          &nut.Reading{At: now.Add(-5 * time.Second), Status: "OL CHRG", Battery: 80},
+		SafeSince:        now.Add(-time.Minute),
+		SpendingTimeLeft: true,
+		StorageOK:        true,
 		RecoverySettings: recovery.Settings{
 			StablePowerDelay:  30 * time.Second,
 			MinBatteryPercent: 25,
@@ -120,7 +121,7 @@ func TestGivenRunningMonitorWhenStatusRequestedThenPowerDevicesAndSettingsAreRep
 
 	// Then power, both devices, their recovery progress and the settings are reported.
 	power := body.Power
-	if !power.Available || power.Block != nil || *power.BatteryPercent != 80 || strings.Join(power.Status, " ") != "OL CHRG" {
+	if !power.Available || power.Block != nil || *power.BatteryPercent != 80 || strings.Join(power.Status, " ") != "OL CHRG" || !power.Charging {
 		t.Fatalf("power %+v", power)
 	}
 	if !power.WakeAllowedAt.Equal(now.Add(-30 * time.Second)) {
@@ -130,8 +131,11 @@ func TestGivenRunningMonitorWhenStatusRequestedThenPowerDevicesAndSettingsAreRep
 		t.Fatalf("idle device %+v", body.Devices[0])
 	}
 	pending := body.Devices[1].Recovery
-	if pending == nil || pending.Attempts != 2 || pending.TimeLeftSeconds != 540 {
+	if pending == nil || pending.State != recovery.Waking || pending.Attempts != 2 || pending.TimeLeftSeconds != 540 {
 		t.Fatalf("pending device %+v", pending)
+	}
+	if pending.GivesUpAt == nil || !pending.GivesUpAt.Equal(now.Add(-5*time.Second+9*time.Minute)) {
+		t.Fatalf("gives up at %v", pending.GivesUpAt)
 	}
 	if body.Settings.StablePowerSeconds != 30 || body.Settings.MinBatteryPercent != 25 || body.Version != "0.2.0" {
 		t.Fatalf("settings %+v", body.Settings)
@@ -327,7 +331,7 @@ func TestGivenHistoryPageWhenRequestedThenEventsAndNextCursorAreReturned(t *test
 	server, _, events := testServerWithHistory("127.0.0.1:8080")
 	events.page = history.Page{
 		Events: []history.Event{
-			{ID: 9, At: now, Kind: history.WakeSent, DeviceID: "server", Details: history.Details{Source: history.Automatic, Attempt: 2}},
+			{ID: 9, At: now, Kind: history.WakeSent, DeviceID: "server", Details: history.Details{Attempt: 2}},
 			{ID: 8, At: now, Kind: history.UPSStatus, Details: history.Details{Status: "OL"}},
 		},
 		NextBefore: 8,
@@ -431,6 +435,60 @@ func TestGivenMonitorProgressWhenStatusRequestedThenItReportsTheMonitorStateAndS
 			// Then the monitor state matches the health check, and the server's time is included.
 			if body.Monitor != scenario.want || !body.ServerTime.Equal(now) {
 				t.Fatalf("monitor %q, server time %v", body.Monitor, body.ServerTime)
+			}
+		})
+	}
+}
+
+func TestGivenTimeLeftNotBeingSpentWhenStatusRequestedThenNoGiveUpTimeIsReported(t *testing.T) {
+	for _, scenario := range []struct {
+		name             string
+		spendingTimeLeft bool
+		readAt           time.Time
+	}{
+		{"recovery was not spending time at the last check", false, now.Add(-5 * time.Second)},
+		{"reading expired since the last check", true, now.Add(-31 * time.Second)},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			// Given a pending device, and recovery not spending its time left at the last check or now.
+			server, fake := testServer("127.0.0.1:8080")
+			fake.latest.SpendingTimeLeft = scenario.spendingTimeLeft
+			fake.latest.Reading.At = scenario.readAt
+
+			// When the status is requested.
+			body := statusBody(t, server)
+
+			// Then it has no time it gives up at, because Evigo is not spending its time left.
+			if pending := body.Devices[1].Recovery; pending == nil || pending.GivesUpAt != nil {
+				t.Fatalf("pending device %+v", pending)
+			}
+		})
+	}
+}
+
+func TestGivenPendingDeviceWhenStatusRequestedThenItsStateComesFromRecovery(t *testing.T) {
+	for _, scenario := range []struct {
+		name         string
+		reachability devices.Reachability
+		attempts     int
+		want         recovery.State
+	}{
+		{"still answering ping", devices.Online, 0, recovery.Watching},
+		{"off", devices.Offline, 0, recovery.Waking},
+		{"unknown after wake attempts", devices.Unknown, 2, recovery.Waking},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			// Given a pending device with this ping result and number of wake attempts.
+			server, fake := testServer("127.0.0.1:8080")
+			fake.latest.Devices[1].Reachability = scenario.reachability
+			fake.latest.Devices[1].Pending.Attempts = scenario.attempts
+
+			// When the status is requested.
+			body := statusBody(t, server)
+
+			// Then its recovery state is the one recovery gives it.
+			if pending := body.Devices[1].Recovery; pending == nil || pending.State != scenario.want {
+				t.Fatalf("pending device %+v", pending)
 			}
 		})
 	}

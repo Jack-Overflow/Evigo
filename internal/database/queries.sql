@@ -5,8 +5,8 @@ SELECT device_id, attempts, last_attempt_ns, time_left_ns FROM pending;
 DELETE FROM pending;
 
 -- name: InsertPending :exec
-INSERT INTO pending (device_id, attempts, last_attempt_ns, time_left_ns, grace_left_ns)
-VALUES (?, ?, ?, ?, 0);
+INSERT INTO pending (device_id, attempts, last_attempt_ns, time_left_ns)
+VALUES (?, ?, ?, ?);
 
 -- name: InsertHistory :exec
 INSERT INTO history (at_ns, kind, device_id, details)
