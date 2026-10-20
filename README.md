@@ -19,9 +19,8 @@ sends commands to your UPS, so keep your existing shutdown setup as it is.
 2. **When the power goes out:** it notes which devices were running just before.
    Devices that were already off are left alone.
 3. **When the power comes back:** it waits until power has been steady for a short
-   while and the UPS battery has recharged enough to cover another outage.
-   Devices that are still on by then never went off, or came back by themselves,
-   and are left as they are.
+   while and the UPS battery has recharged to your chosen minimum charge. Any
+   device that's still answering by then is left alone.
 4. **Then it wakes the devices that are off,** retrying every so often until each
    one comes back online, or gives up after a while if one never does.
 
@@ -36,11 +35,20 @@ it starts the wait for stable power again.
 - A UPS monitored by [Network UPS Tools (NUT)](https://networkupstools.org/), with
   its server reachable from where Evigo runs.
 - Devices with **Wake-on-LAN enabled** in their BIOS/UEFI and network settings.
+  If your UPS turns its outlets off at the end of an outage, the device must also
+  allow waking after a full power loss (often called "Wake on LAN from S5" or
+  "after AC loss" in the BIOS).
 - An always-on Linux host on the **same network** as the devices you want to
-  wake, to run Evigo. Docker or a systemd-based Linux install both work.
+  wake, or one that can reach them with a
+  [directed broadcast](#devices-on-another-network). Docker or a systemd-based
+  Linux install both work.
 - Each device's IP address (or hostname) and MAC address.
 
 ## Quick start with Docker
+
+Docker must run on a Linux host: Evigo uses host networking so its wake packets
+and pings reach your network, which Docker Desktop on macOS and Windows can't
+provide.
 
 1. Download [`compose.yaml`](compose.yaml) and
    [`config.example.yaml`](config.example.yaml) into a new folder, and rename the
@@ -60,8 +68,6 @@ it starts the wait for stable power again.
    ```
 
 You should see `Evigo started` followed by your UPS status.
-
-Docker must run on a Linux host.
 
 ## Installing on Linux without Docker
 
@@ -129,13 +135,14 @@ nut:
   # or: password_file: /etc/evigo/nut-password
 ```
 
-NUT sends passwords unencrypted, so only use it on a network you trust.
+Evigo connects to NUT without encryption, so the username and password are sent
+in plain text. Only use a login on a network you trust.
 
 ### Devices on another network
 
 Wake-on-LAN signals don't normally cross between networks or VLANs. Either run
-Evigo on the same network as the devices, or set a directed broadcast address
-for the device (your router must allow it):
+Evigo on the same network as the devices, or set the device's subnet broadcast
+address as a directed broadcast (your router must allow it):
 
 ```yaml
 devices:
@@ -174,8 +181,9 @@ current.
 
 There is **no login**. Anyone who can reach it can see your UPS and devices, so
 keep it on `127.0.0.1` or put it behind a reverse proxy that adds a login and
-HTTPS. IP addresses and `localhost` always work. If you also reach it by a
-hostname, list that name, without a port, so Evigo accepts it:
+HTTPS. To stop other websites reaching it through DNS rebinding, Evigo only
+answers requests addressed to an IP address, `localhost`, or a hostname you list.
+If you reach it by a hostname, list that name, without a port:
 
 ```yaml
 web:
@@ -199,6 +207,7 @@ arrive.
 - it was online when the power went out (devices that were already off are left
   off on purpose),
 - Wake-on-LAN works for it, for example by testing with another Wake-on-LAN tool,
+  including after its power has been fully cut if your UPS turns its outlets off,
 - it was off once power became stable; a device still answering ping then is
   treated as on and left alone,
 - the battery reached `min_battery_percent`; the logs show the UPS status and
