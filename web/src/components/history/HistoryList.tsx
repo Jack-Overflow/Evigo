@@ -73,11 +73,11 @@ export function HistoryList({ devices }: { devices: Device[] }) {
                   >
                     <Icon size={14} aria-hidden="true" />
                   </span>
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                  <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <span className={problem ? 'text-warning' : ''}>
                       {historyText(event, deviceName)}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
                       <Timestamp value={event.at} />
                     </span>
                   </div>
