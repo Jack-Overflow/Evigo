@@ -32,7 +32,7 @@ go-lint: go-format-check generate-check
 	go vet $(GO_PACKAGES)
 	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) $(GO_PACKAGES)
 shell-check:
-	shellcheck -s sh deploy/install.sh
+	shellcheck -s sh deploy/install.sh scripts/third-party-licenses.sh
 security-check:
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) $(GO_PACKAGES)
 	cd web && npm audit --audit-level=high
@@ -43,9 +43,10 @@ check: lint shell-check workflow-check
 	cd web && npm test
 release: frontend
 	mkdir -p dist
+	sh scripts/third-party-licenses.sh > dist/THIRD_PARTY_LICENSES
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o dist/evigo-linux-amd64 ./cmd/evigo
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o dist/evigo-linux-arm64 ./cmd/evigo
-	install -m 0644 LICENSE THIRD_PARTY_LICENSES config.example.yaml deploy/evigo.service dist/
+	install -m 0644 LICENSE config.example.yaml deploy/evigo.service dist/
 	install -m 0755 deploy/install.sh dist/
 	COPYFILE_DISABLE=1 tar --no-xattrs -czf dist/evigo-linux-amd64.tar.gz -C dist evigo-linux-amd64 LICENSE THIRD_PARTY_LICENSES config.example.yaml evigo.service
 	COPYFILE_DISABLE=1 tar --no-xattrs -czf dist/evigo-linux-arm64.tar.gz -C dist evigo-linux-arm64 LICENSE THIRD_PARTY_LICENSES config.example.yaml evigo.service

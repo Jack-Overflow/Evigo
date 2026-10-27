@@ -1,5 +1,4 @@
 import { defineConfig } from 'vitest/config';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -17,18 +16,14 @@ export default defineConfig({
           fileName: '.gitignore',
           source: '*\n!.gitignore\n',
         });
-        this.emitFile({
-          type: 'asset',
-          fileName: 'licenses.txt',
-          source: readFileSync(
-            new URL('../THIRD_PARTY_LICENSES', import.meta.url),
-            'utf8',
-          ),
-        });
       },
     },
   ],
-  build: { outDir: '../internal/api/static', emptyOutDir: true },
+  build: {
+    outDir: '../internal/api/static',
+    emptyOutDir: true,
+    license: true,
+  },
   preview: {
     headers: {
       'Content-Security-Policy':
