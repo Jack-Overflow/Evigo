@@ -11,6 +11,9 @@ updates:
     groups:
       frontend:
         patterns: ['*']
+    ignore:
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
   - package-ecosystem: docker
     directory: /
     schedule:

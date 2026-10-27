@@ -3375,7 +3375,7 @@ SOFTWARE.
 
 
 ========================================================================
-@tanstack/query-core 5.104.2 — MIT
+@tanstack/query-core 5.104.5 — MIT
 
 MIT License
 
@@ -3401,7 +3401,7 @@ SOFTWARE.
 
 
 ========================================================================
-@tanstack/react-query 5.104.2 — MIT
+@tanstack/react-query 5.104.5 — MIT
 
 MIT License
 
@@ -3714,7 +3714,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 
 ========================================================================
-cn 0.4.0 — MIT
+cn 0.5.0 — MIT
 
 MIT License
 
@@ -3816,7 +3816,7 @@ SOFTWARE.
 
 
 ========================================================================
-lucide-react 1.56.0 — ISC
+lucide-react 1.61.0 — ISC
 
 ISC License
 
@@ -3890,7 +3890,7 @@ SOFTWARE.
 
 
 ========================================================================
-react 19.3.0 — MIT
+react 19.3.1 — MIT
 
 MIT License
 
@@ -3916,7 +3916,7 @@ SOFTWARE.
 
 
 ========================================================================
-react-dom 19.3.0 — MIT
+react-dom 19.3.1 — MIT
 
 MIT License
 
