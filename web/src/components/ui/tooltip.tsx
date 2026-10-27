@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Tooltip as Primitive } from 'radix-ui';
 
 export function Tooltip({
@@ -10,10 +10,20 @@ export function Tooltip({
   content: ReactNode;
   side?: 'top' | 'bottom';
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
     <Primitive.Provider delayDuration={200}>
-      <Primitive.Root>
-        <Primitive.Trigger asChild>{children}</Primitive.Trigger>
+      <Primitive.Root open={open} onOpenChange={setOpen}>
+        <Primitive.Trigger
+          asChild
+          onClick={(event) => {
+            event.preventDefault();
+            setOpen(true);
+          }}
+        >
+          {children}
+        </Primitive.Trigger>
         <Primitive.Portal>
           <Primitive.Content
             side={side}

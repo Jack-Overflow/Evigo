@@ -86,6 +86,23 @@ describe("Given a request for Evigo's status", () => {
     });
   });
 
+  describe('When the minimum charge marker is tapped', () => {
+    beforeEach(async () => {
+      answerWith(statusWith());
+      renderApp();
+      await userEvent.pointer({
+        keys: '[TouchA]',
+        target: await screen.findByText('25% min'),
+      });
+    });
+
+    it('Then it explains the minimum in a tooltip', async () => {
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Waking needs at least 25%',
+      );
+    });
+  });
+
   describe('When the battery is below the minimum', () => {
     beforeEach(() => {
       answerWith(
