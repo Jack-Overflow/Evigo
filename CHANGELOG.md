@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Tooltips open when tapped on phones and tablets.
+- Dependency updates.
+
 ## 0.2.1
 
 - The battery minimum is explained in a tooltip on its marker instead of a
