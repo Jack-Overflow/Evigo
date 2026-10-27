@@ -3,7 +3,6 @@ WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web ./
-COPY THIRD_PARTY_LICENSES /src/THIRD_PARTY_LICENSES
 RUN npm run build
 
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
@@ -16,6 +15,9 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY --from=frontend /src/internal/api/static ./internal/api/static
+COPY scripts/third-party-licenses.sh ./scripts/
+COPY web/THIRD_PARTY_LICENSES ./web/
+RUN sh scripts/third-party-licenses.sh > internal/api/static/licenses.txt
 COPY config.example.yaml VERSION ./
 RUN version="${VERSION:-$(cat VERSION)}" && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$version" -o /evigo ./cmd/evigo
 
@@ -24,7 +26,8 @@ RUN apk add --no-cache iputils ca-certificates && \
     addgroup -g 10001 evigo && adduser -D -H -u 10001 -G evigo evigo && \
     mkdir -p /var/lib/evigo /etc/evigo && chown evigo:evigo /var/lib/evigo
 COPY --from=builder /evigo /usr/local/bin/evigo
-COPY LICENSE THIRD_PARTY_LICENSES /usr/share/licenses/evigo/
+COPY LICENSE /usr/share/licenses/evigo/
+COPY --from=builder /src/internal/api/static/licenses.txt /usr/share/licenses/evigo/THIRD_PARTY_LICENSES
 USER 10001:10001
 ENTRYPOINT ["evigo"]
 CMD ["run", "--config", "/etc/evigo/config.yaml"]

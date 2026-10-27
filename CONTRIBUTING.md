@@ -6,7 +6,9 @@ and coding tools.
 
 Use the latest Go 1.26 patch release or newer, Node 24 (LTS) with npm,
 ShellCheck, and Docker for container checks. Run `make check` before opening a pull request. Dependency
-changes also need `make security-check` and updated `THIRD_PARTY_LICENSES` notices.
+changes also need `make security-check`. Third-party notices are generated at
+build time; only copied component source and packages used just by the
+stylesheet need a notice added to `web/THIRD_PARTY_LICENSES`.
 
 Keep pull requests focused, describe the problem and resulting behaviour, and
 include the checks you ran. Add regression tests for behaviour changes and

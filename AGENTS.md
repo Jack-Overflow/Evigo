@@ -106,9 +106,10 @@ database, or packets must keep every one and add a regression test.
 ## Pull requests and releases
 
 - Fill in `.github/pull_request_template.md`. Dependency changes also need
-  `make security-check` and updated `THIRD_PARTY_LICENSES`. Changes to
-  `deploy/`, the `Dockerfile`, or workflows also need `docker build` and
-  `make release`.
+  `make security-check`. Third-party notices are generated at build time;
+  only copied component source and packages used just by the stylesheet need
+  a notice added to `web/THIRD_PARTY_LICENSES`. Changes to `deploy/`, the
+  `Dockerfile`, or workflows also need `docker build` and `make release`.
 - GitHub Actions are pinned to version tags, and each check is a separate job.
 - Pull requests merge into `main` only when up to date and every Verify job
   passes. Nothing is published on merge: a maintainer updates `VERSION` and
