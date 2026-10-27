@@ -3,6 +3,7 @@
 ## 0.2.2
 
 - Tooltips open when tapped on phones and tablets.
+- Dependency updates.
 
 ## 0.2.1
 
