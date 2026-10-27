@@ -6,7 +6,7 @@ GOVULNCHECK_VERSION := v1.9.0
 SQLC_VERSION := v1.31.1
 GO_PACKAGES := ./cmd/... ./internal/...
 
-.PHONY: build licenses test check lint go-lint frontend frontend-lint frontend-test generate generate-check format format-check go-format-check workflow-check shell-check release security-check
+.PHONY: build test check lint go-lint frontend frontend-lint frontend-test generate generate-check format format-check go-format-check workflow-check shell-check release security-check
 build: frontend
 	go build -trimpath -ldflags="-X main.version=$(VERSION)" -o bin/evigo ./cmd/evigo
 test:
@@ -41,18 +41,16 @@ workflow-check:
 check: lint shell-check workflow-check
 	go test -race $(GO_PACKAGES)
 	cd web && npm test
-release: licenses
+release: frontend
 	mkdir -p dist
+	sh scripts/third-party-licenses.sh > dist/THIRD_PARTY_LICENSES
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o dist/evigo-linux-amd64 ./cmd/evigo
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o dist/evigo-linux-arm64 ./cmd/evigo
 	install -m 0644 LICENSE config.example.yaml deploy/evigo.service dist/
-	install -m 0644 internal/api/static/licenses.txt dist/THIRD_PARTY_LICENSES
 	install -m 0755 deploy/install.sh dist/
 	COPYFILE_DISABLE=1 tar --no-xattrs -czf dist/evigo-linux-amd64.tar.gz -C dist evigo-linux-amd64 LICENSE THIRD_PARTY_LICENSES config.example.yaml evigo.service
 	COPYFILE_DISABLE=1 tar --no-xattrs -czf dist/evigo-linux-arm64.tar.gz -C dist evigo-linux-arm64 LICENSE THIRD_PARTY_LICENSES config.example.yaml evigo.service
 	cd dist && if command -v sha256sum >/dev/null 2>&1; then sha256sum evigo-linux-amd64.tar.gz evigo-linux-arm64.tar.gz install.sh; else shasum -a 256 evigo-linux-amd64.tar.gz evigo-linux-arm64.tar.gz install.sh; fi > SHA256SUMS
-licenses: frontend
-	sh scripts/third-party-licenses.sh > internal/api/static/licenses.txt
 frontend:
 	cd web && npm ci && npm run build
 frontend-lint:

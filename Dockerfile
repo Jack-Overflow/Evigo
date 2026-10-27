@@ -16,7 +16,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY --from=frontend /src/internal/api/static ./internal/api/static
 COPY scripts/third-party-licenses.sh ./scripts/
-RUN sh scripts/third-party-licenses.sh > internal/api/static/licenses.txt
+RUN sh scripts/third-party-licenses.sh > THIRD_PARTY_LICENSES
 COPY config.example.yaml VERSION ./
 RUN version="${VERSION:-$(cat VERSION)}" && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$version" -o /evigo ./cmd/evigo
 
@@ -26,7 +26,7 @@ RUN apk add --no-cache iputils ca-certificates && \
     mkdir -p /var/lib/evigo /etc/evigo && chown evigo:evigo /var/lib/evigo
 COPY --from=builder /evigo /usr/local/bin/evigo
 COPY LICENSE /usr/share/licenses/evigo/
-COPY --from=builder /src/internal/api/static/licenses.txt /usr/share/licenses/evigo/THIRD_PARTY_LICENSES
+COPY --from=builder /src/THIRD_PARTY_LICENSES /usr/share/licenses/evigo/
 USER 10001:10001
 ENTRYPOINT ["evigo"]
 CMD ["run", "--config", "/etc/evigo/config.yaml"]

@@ -19,4 +19,3 @@ web/node_modules
 web/*.tsbuildinfo
 internal/api/static/assets
 internal/api/static/index.html
-internal/api/static/licenses.txt

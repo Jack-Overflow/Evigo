@@ -136,5 +136,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE). Third-party notices ship as
-`THIRD_PARTY_LICENSES` in release archives and the container image, and at
-`/licenses.txt` on the dashboard.
+`THIRD_PARTY_LICENSES` in release archives and the container image.
