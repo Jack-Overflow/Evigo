@@ -13,7 +13,7 @@ jobs:
   publish:
     name: Publish verified release
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: write
