@@ -82,6 +82,11 @@ database, or packets must keep every one and add a regression test.
 - Recovery progress survives restarts and repeated outages. Damaged or
   unfamiliar database files are refused and left untouched.
 - History is best effort: failing to save it never blocks a wake.
+- Alerts are best effort too: raising one never waits for it to be sent, so a
+  slow or failing sender never delays a wake. A lost reading is never reported
+  as a power change, stale or contradictory readings never change the last
+  confirmed power state, and a start on mains raises nothing.
+  `Recovery.Update` owns power transitions and emits alerts.
 - The API keeps its Host and Origin checks whether or not a reverse proxy is in
   front of it.
 

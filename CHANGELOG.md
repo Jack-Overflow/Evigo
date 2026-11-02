@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Optional alerts by email, Discord, ntfy or webhook when the UPS goes on
+  battery, mains power returns, a woken device comes back, or Evigo gives up on
+  a device.
+
 ## 0.2.2
 
 - Tooltips open when tapped on phones and tablets.

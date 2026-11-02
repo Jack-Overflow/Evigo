@@ -13,6 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Jack-Overflow/Evigo/internal/alerts"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/discord"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/email"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/ntfy"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/webhook"
 	"github.com/Jack-Overflow/Evigo/internal/api"
 	"github.com/Jack-Overflow/Evigo/internal/config"
 	"github.com/Jack-Overflow/Evigo/internal/database"
@@ -123,7 +128,8 @@ func run(settings config.Config, stderr io.Writer) error {
 	ups := nut.NewReader(nutSettings(settings), nil)
 	defer ups.Close()
 	deviceRecovery := recovery.New(recoverySettings(settings), configuredDevices, saved, logger)
-	loop := monitor.New(monitorSettings(settings), ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, logger)
+	alertService := alerts.NewService(alertSenders(settings), logger)
+	loop := monitor.New(monitorSettings(settings), ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, alertService, logger)
 	services := []func(context.Context) error{loop.Run}
 	if settings.Web.Listen != "" {
 		listener, err := net.Listen("tcp", settings.Web.Listen)
@@ -147,6 +153,35 @@ func recordStarted(ctx context.Context, db *database.DB, logger *slog.Logger) {
 	if err := db.AppendHistory(ctx, []history.Event{started}); err != nil {
 		logger.Error("cannot save history", "error", err)
 	}
+}
+
+func alertSenders(settings config.Config) map[string]alerts.Sender {
+	senders := map[string]alerts.Sender{}
+	if configured := settings.Alerts.Email; configured.Host != "" {
+		senders["email"] = email.New(email.Settings{
+			Host:     configured.Host,
+			Port:     configured.Port,
+			Security: email.Security(configured.Security),
+			Username: configured.Username,
+			Password: configured.Password,
+			From:     configured.From,
+			To:       configured.To,
+		})
+	}
+
+	if webhookURL := settings.Alerts.Discord.WebhookURL; webhookURL != "" {
+		senders["discord"] = discord.New(webhookURL)
+	}
+
+	if configured := settings.Alerts.Ntfy; configured.Topic != "" {
+		senders["ntfy"] = ntfy.New(ntfy.Settings{URL: configured.URL, Topic: configured.Topic, Token: configured.Token})
+	}
+
+	if url := settings.Alerts.Webhook.URL; url != "" {
+		senders["webhook"] = webhook.New(url)
+	}
+
+	return senders
 }
 
 func nutSettings(settings config.Config) nut.Settings {

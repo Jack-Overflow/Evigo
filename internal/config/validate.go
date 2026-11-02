@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/mail"
+	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var (
-	idPattern       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
-	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$`)
+	idPattern        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+	hostnamePattern  = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$`)
+	ntfyTopicPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 )
 
 func (settings Config) Validate() error {
@@ -23,6 +27,10 @@ func (settings Config) Validate() error {
 		settings.validateDurations,
 		settings.validateRecovery,
 		settings.validateWeb,
+		settings.validateAlerts,
+		settings.validateDiscord,
+		settings.validateNtfy,
+		settings.validateWebhook,
 		settings.validateDevices,
 	} {
 		if err := validate(); err != nil {
@@ -111,6 +119,111 @@ func (settings Config) validateWeb() error {
 	}
 
 	return nil
+}
+
+func (settings Config) validateAlerts() error {
+	email := settings.Alerts.Email
+	if email.Host == "" {
+		if email.From != "" || len(email.To) != 0 || email.Username != "" || email.Password != "" {
+			return errors.New("alerts.email.host is required to send email")
+		}
+
+		return nil
+	}
+
+	switch {
+	case !hostOK(email.Host):
+		return errors.New("alerts.email.host is invalid")
+	case !portOK(email.Port):
+		return errors.New("alerts.email.port must be between 1 and 65535")
+	case !slices.Contains([]string{"starttls", "tls", "none"}, email.Security):
+		return errors.New("alerts.email.security must be starttls, tls, or none")
+	case !emailAddressOK(email.From):
+		return errors.New("alerts.email.from must be a plain email address")
+	case len(email.To) == 0 || !allEmailAddressesOK(email.To):
+		return errors.New("alerts.email.to must list at least one plain email address")
+	case (email.Username == "") != (email.Password == ""):
+		return errors.New("email authentication requires both username and password")
+	case email.Username != "" && (!textOK(email.Username) || !textOK(email.Password)):
+		return errors.New("invalid email credentials: line breaks and NUL are not allowed")
+	case email.Username != "" && email.Security == "none" && !slices.Contains([]string{"localhost", "127.0.0.1", "::1"}, email.Host):
+		return errors.New("alerts.email.security none only allows a login to localhost")
+	}
+
+	return nil
+}
+
+func (settings Config) validateDiscord() error {
+	webhookURL := settings.Alerts.Discord.WebhookURL
+	if webhookURL == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(webhookURL)
+	if err != nil || parsed.Scheme != "https" || !slices.Contains([]string{"discord.com", "discordapp.com"}, parsed.Host) || !strings.HasPrefix(parsed.Path, "/api/webhooks/") {
+		return errors.New("alerts.discord.webhook_url must be a https://discord.com/api/webhooks/ URL")
+	}
+
+	return nil
+}
+
+func (settings Config) validateNtfy() error {
+	ntfy := settings.Alerts.Ntfy
+	if ntfy.Topic == "" {
+		if ntfy.Token != "" {
+			return errors.New("alerts.ntfy.topic is required to send to ntfy")
+		}
+
+		return nil
+	}
+
+	parsed, ok := httpURL(ntfy.URL)
+	switch {
+	case !ok:
+		return errors.New("alerts.ntfy.url must be an http or https URL")
+	case !ntfyTopicPattern.MatchString(ntfy.Topic):
+		return errors.New("alerts.ntfy.topic must be 1 to 64 letters, digits, dashes or underscores")
+	case ntfy.Token != "" && !textOK(ntfy.Token):
+		return errors.New("invalid ntfy token: line breaks and NUL are not allowed")
+	case ntfy.Token != "" && parsed.Scheme != "https" && !slices.Contains([]string{"localhost", "127.0.0.1", "::1"}, parsed.Hostname()):
+		return errors.New("alerts.ntfy.token is only sent over https or to localhost")
+	}
+
+	return nil
+}
+
+func (settings Config) validateWebhook() error {
+	if settings.Alerts.Webhook.URL == "" {
+		return nil
+	}
+
+	if _, ok := httpURL(settings.Alerts.Webhook.URL); !ok {
+		return errors.New("alerts.webhook.url must be an http or https URL")
+	}
+
+	return nil
+}
+
+func httpURL(address string) (*url.URL, bool) {
+	parsed, err := url.Parse(address)
+
+	return parsed, err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil
+}
+
+func emailAddressOK(address string) bool {
+	parsed, err := mail.ParseAddress(address)
+
+	return err == nil && parsed.Address == address
+}
+
+func allEmailAddressesOK(addresses []string) bool {
+	for _, address := range addresses {
+		if !emailAddressOK(address) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func allowedHostOK(allowed string) bool {

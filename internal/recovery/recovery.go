@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Jack-Overflow/Evigo/internal/alerts"
 	"github.com/Jack-Overflow/Evigo/internal/devices"
 	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
@@ -45,6 +46,7 @@ func (progress Progress) State(reachability devices.Reachability) State {
 type Outcome struct {
 	Wake   []*devices.Device
 	Events []history.Event
+	Alerts []alerts.Alert
 }
 
 type Pass struct {
@@ -67,6 +69,7 @@ type Recovery struct {
 	pending                map[string]*Progress
 	safeSince              time.Time
 	wasStable              bool
+	onBattery              bool
 	previousPass           time.Time
 	devicesOnline          map[string]bool
 	devicesOnlineCheckedAt time.Time
@@ -98,12 +101,13 @@ func (recovery *Recovery) Update(pass Pass) Outcome {
 	}
 
 	recovery.previousPass = pass.At
-	if pass.Reading != nil && (pass.At.Before(pass.Reading.At) || pass.At.Sub(pass.Reading.At) > recovery.settings.MaxReadingAge) {
+	if !pass.Reading.Fresh(pass.At, recovery.settings.MaxReadingAge) {
 		pass.Reading = nil
 	}
 
 	recovery.trackSafePower(pass)
-	outageEvents := recovery.trackOutage(pass)
+	outcome := Outcome{}
+	recovery.trackOutage(pass, &outcome)
 	stable := recovery.powerStable(pass.At)
 	if stable && recovery.wasStable && elapsed > 0 {
 		recovery.spendRecoveryTime(elapsed)
@@ -111,17 +115,17 @@ func (recovery *Recovery) Update(pass Pass) Outcome {
 
 	recovery.wasStable = stable
 	if !stable {
-		return Outcome{Events: outageEvents}
+		return outcome
 	}
 
-	due, deviceEvents := recovery.updatePendingDevices(pass)
+	recovery.updatePendingDevices(pass, &outcome)
 
-	return Outcome{Wake: due, Events: append(outageEvents, deviceEvents...)}
+	return outcome
 }
 
 func (settings Settings) PowerBlock(at time.Time, reading *nut.Reading, safeSince time.Time) Block {
 	switch {
-	case reading == nil || at.Before(reading.At) || at.Sub(reading.At) >= settings.MaxReadingAge:
+	case !reading.Fresh(at, settings.MaxReadingAge):
 		return NoReading
 	case reading.OnBattery():
 		return OnBattery
@@ -172,16 +176,29 @@ func (recovery *Recovery) trackSafePower(pass Pass) {
 	}
 }
 
-func (recovery *Recovery) trackOutage(pass Pass) []history.Event {
-	switch {
-	case pass.Reading != nil && pass.Reading.Safe(0):
-		recovery.devicesOnline = onlineDevices(pass.Reachability)
-		recovery.devicesOnlineCheckedAt = pass.At
-	case pass.Reading != nil && pass.Reading.OnBattery():
-		return recovery.addOutageDevicesToPending(pass.At)
+func (recovery *Recovery) trackOutage(pass Pass, outcome *Outcome) {
+	if pass.Reading == nil {
+		return
 	}
 
-	return nil
+	reading := pass.Reading
+	switch {
+	case reading.OnBattery():
+		if !recovery.onBattery {
+			recovery.onBattery = true
+			outcome.Alerts = append(outcome.Alerts, alerts.OnBattery(reading.At, reading.Battery))
+		}
+		outcome.Events = append(outcome.Events, recovery.addOutageDevicesToPending(pass.At)...)
+	case reading.OnMains():
+		if recovery.onBattery {
+			recovery.onBattery = false
+			outcome.Alerts = append(outcome.Alerts, alerts.MainsRestored(reading.At, reading.Battery))
+		}
+		if reading.Safe(0) {
+			recovery.devicesOnline = onlineDevices(pass.Reachability)
+			recovery.devicesOnlineCheckedAt = pass.At
+		}
+	}
 }
 
 func (recovery *Recovery) addOutageDevicesToPending(at time.Time) []history.Event {
@@ -211,9 +228,7 @@ func (recovery *Recovery) spendRecoveryTime(elapsed time.Duration) {
 	}
 }
 
-func (recovery *Recovery) updatePendingDevices(pass Pass) ([]*devices.Device, []history.Event) {
-	var due []*devices.Device
-	var events []history.Event
+func (recovery *Recovery) updatePendingDevices(pass Pass, outcome *Outcome) {
 	for _, device := range recovery.devices {
 		progress := recovery.pending[device.ID]
 		if progress == nil {
@@ -224,27 +239,27 @@ func (recovery *Recovery) updatePendingDevices(pass Pass) ([]*devices.Device, []
 		case reachability == devices.Online && progress.Attempts == 0:
 			delete(recovery.pending, device.ID)
 			recovery.log.Info("device was already on", "device", device.ID)
-			events = append(events, history.Event{At: pass.At, Kind: history.DeviceAlreadyOn, DeviceID: device.ID})
+			outcome.Events = append(outcome.Events, history.Event{At: pass.At, Kind: history.DeviceAlreadyOn, DeviceID: device.ID})
 		case reachability == devices.Online:
 			delete(recovery.pending, device.ID)
 			recovery.log.Info("device is back online", "device", device.ID, "attempts", progress.Attempts)
-			events = append(events, history.Event{
+			outcome.Events = append(outcome.Events, history.Event{
 				At: pass.At, Kind: history.DeviceRecovered, DeviceID: device.ID, Details: history.Details{Attempt: progress.Attempts},
 			})
+			outcome.Alerts = append(outcome.Alerts, alerts.DeviceRecovered(pass.At, device.Name, progress.Attempts))
 		case progress.TimeLeft == 0:
 			delete(recovery.pending, device.ID)
 			recovery.log.Warn("device did not come back in time", "device", device.ID, "attempts", progress.Attempts)
-			events = append(events, history.Event{
+			outcome.Events = append(outcome.Events, history.Event{
 				At: pass.At, Kind: history.DeviceGaveUp, DeviceID: device.ID, Details: history.Details{Attempt: progress.Attempts},
 			})
+			outcome.Alerts = append(outcome.Alerts, alerts.DeviceGaveUp(pass.At, device.Name, progress.Attempts))
 		case reachability == devices.Offline && recovery.retryDue(progress, pass.At):
 			progress.Attempts++
 			progress.LastAttempt = pass.At
-			due = append(due, device)
+			outcome.Wake = append(outcome.Wake, device)
 		}
 	}
-
-	return due, events
 }
 
 func (recovery *Recovery) retryDue(progress *Progress, at time.Time) bool {

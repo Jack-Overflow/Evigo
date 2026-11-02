@@ -10,7 +10,7 @@ at most `168h`.
 
 ## `nut`: the UPS
 
-| Setting           | Default  | What it does                                                                                    |
+| Setting           | Default  | What it is                                                                                      |
 | ----------------- | -------- | ----------------------------------------------------------------------------------------------- |
 | `host`            | required | Address of your NUT server.                                                                     |
 | `ups`             | required | The UPS name as NUT knows it.                                                                   |
@@ -29,14 +29,14 @@ login on a network you trust.
 
 ## `poll`: how often Evigo checks
 
-| Setting               | Default | What it does                          |
+| Setting               | Default | What it is                            |
 | --------------------- | ------- | ------------------------------------- |
 | `interval`            | `10s`   | Time between checks on mains power.   |
 | `on_battery_interval` | `2s`    | Time between checks while on battery. |
 
 ## `recovery`: when devices are woken
 
-| Setting               | Default | What it does                                                                                 |
+| Setting               | Default | What it is                                                                                   |
 | --------------------- | ------- | -------------------------------------------------------------------------------------------- |
 | `min_battery_percent` | `25`    | Battery charge (0–100) needed before waking anything.                                        |
 | `stable_power_delay`  | `30s`   | How long power must stay safe before waking. Make it longer than a shutdown takes to finish. |
@@ -45,13 +45,13 @@ login on a network you trust.
 
 ## `probe`: checking devices
 
-| Setting   | Default | What it does                       |
+| Setting   | Default | What it is                         |
 | --------- | ------- | ---------------------------------- |
 | `timeout` | `2s`    | How long to wait for a ping reply. |
 
 ## `wol`: Wake-on-LAN defaults
 
-| Setting     | Default           | What it does                           |
+| Setting     | Default           | What it is                             |
 | ----------- | ----------------- | -------------------------------------- |
 | `broadcast` | `255.255.255.255` | IPv4 address wake packets are sent to. |
 | `port`      | `9`               | UDP port wake packets are sent to.     |
@@ -60,7 +60,7 @@ login on a network you trust.
 
 At least one device is required.
 
-| Setting         | Default         | What it does                                                                      |
+| Setting         | Default         | What it is                                                                        |
 | --------------- | --------------- | --------------------------------------------------------------------------------- |
 | `id`            | required        | Unique ID: letters, digits, `.`, `-` or `_`. Keeps saved progress across renames. |
 | `name`          | required        | Name shown in the dashboard and logs.                                             |
@@ -71,14 +71,76 @@ At least one device is required.
 
 ## `web`: dashboard and API
 
-| Setting         | Default | What it does                                                                                          |
+| Setting         | Default | What it is                                                                                            |
 | --------------- | ------- | ----------------------------------------------------------------------------------------------------- |
 | `listen`        | off     | IP address and port to serve the dashboard on, such as `127.0.0.1:8080`. Empty turns it off.          |
 | `allowed_hosts` | none    | Hostnames, without a port, the dashboard may be reached by. IP addresses and `localhost` always work. |
 
+## `alerts.email`: email alerts
+
+| Setting         | Default    | What it is                                                                        |
+| --------------- | ---------- | --------------------------------------------------------------------------------- |
+| `host`          | off        | Address of your SMTP server. Empty turns email alerts off.                        |
+| `port`          | `587`      | SMTP server port. `tls` usually uses `465`.                                       |
+| `security`      | `starttls` | `starttls`, `tls`, or `none`. A login with `none` is only allowed to `localhost`. |
+| `username`      | none       | SMTP login. Set both `username` and a password, or neither.                       |
+| `password`      | none       | SMTP password. `"${NAME}"` reads it from the environment variable `NAME`.         |
+| `password_file` | none       | Read the password from this file instead of `password`.                           |
+| `from`          | required   | Plain address to send from, such as `evigo@example.lan`.                          |
+| `to`            | required   | List of plain addresses to send to.                                               |
+
+`starttls` and `tls` check the server's certificate against the system's trusted
+certificates, and `starttls` refuses a server that doesn't offer encryption.
+
+With Docker, set `SMTP_USERNAME` and `SMTP_PASSWORD` in the same `.env` file and
+use `"${SMTP_USERNAME}"` and `"${SMTP_PASSWORD}"` in the configuration.
+
+## `alerts.discord`: Discord alerts
+
+| Setting       | Default | What it is                                                                                               |
+| ------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `webhook_url` | off     | The channel's webhook URL, starting `https://discord.com/api/webhooks/`. Empty turns Discord alerts off. |
+
+The URL is a secret. With Docker, set `DISCORD_WEBHOOK_URL` in the `.env` file
+and use `"${DISCORD_WEBHOOK_URL}"` in the configuration.
+
+## `alerts.ntfy`: ntfy alerts
+
+| Setting | Default           | What it is                                                                      |
+| ------- | ----------------- | ------------------------------------------------------------------------------- |
+| `topic` | off               | Topic to publish to: letters, digits, `-` and `_`. Empty turns ntfy alerts off. |
+| `url`   | `https://ntfy.sh` | Your ntfy server, if you host your own.                                         |
+| `token` | none              | Access token for a protected topic. Only sent over `https` or to `localhost`.   |
+
+Problems are sent with high priority, and recoveries with default priority.
+With Docker, set `NTFY_TOPIC` and `NTFY_TOKEN` in the `.env` file and use
+`"${NTFY_TOPIC}"` and `"${NTFY_TOKEN}"` in the configuration.
+
+## `alerts.webhook`: webhook alerts
+
+| Setting | Default | What it is                                                                   |
+| ------- | ------- | ---------------------------------------------------------------------------- |
+| `url`   | off     | `http` or `https` URL to post each alert to. Empty turns webhook alerts off. |
+
+Each alert is a `POST` with a JSON body:
+
+```json
+{
+  "title": "UPS on battery",
+  "body": "The UPS is running on battery at 90%.",
+  "severity": "problem",
+  "at": "2026-11-02T15:30:00Z"
+}
+```
+
+`severity` is `problem` or `resolved`, and `at` is when it happened, in UTC.
+Any `2xx` response counts as delivered. If the URL contains a secret, set
+`WEBHOOK_URL` in the `.env` file and use `"${WEBHOOK_URL}"` in the
+configuration.
+
 ## `log` and `state`
 
-| Setting      | Default      | What it does                                                                      |
+| Setting      | Default      | What it is                                                                        |
 | ------------ | ------------ | --------------------------------------------------------------------------------- |
 | `log.level`  | `info`       | `debug`, `info`, `warn` or `error`.                                               |
 | `state.path` | `./evigo.db` | Where recovery progress and history are saved. Docker and the installer set this. |

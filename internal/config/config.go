@@ -28,7 +28,40 @@ type Config struct {
 	Probe    Probe    `yaml:"probe"`
 	WOL      WOL      `yaml:"wol"`
 	Web      Web      `yaml:"web"`
+	Alerts   Alerts   `yaml:"alerts"`
 	Devices  []Device `yaml:"devices"`
+}
+
+type Alerts struct {
+	Email   Email   `yaml:"email"`
+	Discord Discord `yaml:"discord"`
+	Ntfy    Ntfy    `yaml:"ntfy"`
+	Webhook Webhook `yaml:"webhook"`
+}
+
+type Discord struct {
+	WebhookURL string `yaml:"webhook_url"`
+}
+
+type Ntfy struct {
+	URL   string `yaml:"url"`
+	Topic string `yaml:"topic"`
+	Token string `yaml:"token"`
+}
+
+type Webhook struct {
+	URL string `yaml:"url"`
+}
+
+type Email struct {
+	Host         string   `yaml:"host"`
+	Port         int      `yaml:"port"`
+	Security     string   `yaml:"security"`
+	Username     string   `yaml:"username"`
+	Password     string   `yaml:"password"`
+	PasswordFile string   `yaml:"password_file"`
+	From         string   `yaml:"from"`
+	To           []string `yaml:"to"`
 }
 
 type Web struct {
@@ -93,6 +126,8 @@ func Defaults() Config {
 	}
 	settings.Probe = Probe{Timeout: 2 * time.Second}
 	settings.WOL = WOL{Broadcast: "255.255.255.255", Port: 9}
+	settings.Alerts.Email = Email{Port: 587, Security: "starttls"}
+	settings.Alerts.Ntfy = Ntfy{URL: "https://ntfy.sh"}
 
 	return settings
 }
@@ -134,21 +169,49 @@ func Load(path string) (Config, error) {
 }
 
 func (settings *Config) resolveCredentials() error {
-	if settings.NUT.Password != "" && settings.NUT.PasswordFile != "" {
-		return errors.New("nut.password and nut.password_file are mutually exclusive")
+	if err := resolveLogin("nut", &settings.NUT.Username, &settings.NUT.Password, settings.NUT.PasswordFile); err != nil {
+		return err
+	}
+
+	email := &settings.Alerts.Email
+	if err := resolveLogin("alerts.email", &email.Username, &email.Password, email.PasswordFile); err != nil {
+		return err
+	}
+
+	for _, secret := range []struct {
+		field string
+		value *string
+	}{
+		{"alerts.discord.webhook_url", &settings.Alerts.Discord.WebhookURL},
+		{"alerts.ntfy.topic", &settings.Alerts.Ntfy.Topic},
+		{"alerts.ntfy.token", &settings.Alerts.Ntfy.Token},
+		{"alerts.webhook.url", &settings.Alerts.Webhook.URL},
+	} {
+		var err error
+		if *secret.value, err = expandCredential(*secret.value, secret.field); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func resolveLogin(section string, username, password *string, passwordFile string) error {
+	if *password != "" && passwordFile != "" {
+		return fmt.Errorf("%s.password and %s.password_file are mutually exclusive", section, section)
 	}
 
 	var err error
-	if settings.NUT.Username, err = expandCredential(settings.NUT.Username, "nut.username"); err != nil {
+	if *username, err = expandCredential(*username, section+".username"); err != nil {
 		return err
 	}
 
-	if settings.NUT.Password, err = expandCredential(settings.NUT.Password, "nut.password"); err != nil {
+	if *password, err = expandCredential(*password, section+".password"); err != nil {
 		return err
 	}
 
-	if settings.NUT.PasswordFile != "" {
-		settings.NUT.Password, err = readPasswordFile(settings.NUT.PasswordFile)
+	if passwordFile != "" {
+		*password, err = readPasswordFile(passwordFile, section+".password_file")
 	}
 
 	return err
@@ -169,16 +232,16 @@ func expandCredential(value, field string) (string, error) {
 	return expanded, nil
 }
 
-func readPasswordFile(path string) (string, error) {
+func readPasswordFile(path, field string) (string, error) {
 	passwordFile, err := os.Open(path)
 	if err != nil {
-		return "", errors.New("cannot open nut.password_file")
+		return "", fmt.Errorf("cannot open %s", field)
 	}
 
 	defer passwordFile.Close()
 	contents, err := io.ReadAll(io.LimitReader(passwordFile, 4097))
 	if err != nil || len(contents) > 4096 {
-		return "", errors.New("cannot read nut.password_file (maximum 4096 bytes)")
+		return "", fmt.Errorf("cannot read %s (maximum 4096 bytes)", field)
 	}
 
 	return strings.TrimSuffix(strings.TrimSuffix(string(contents), "\n"), "\r"), nil
