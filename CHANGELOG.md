@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
-- Optional email and Discord alerts when the UPS goes on battery, mains power
-  returns, a woken device comes back, or Evigo gives up on a device.
+- Optional alerts by email, Discord, ntfy or webhook when the UPS goes on
+  battery, mains power returns, a woken device comes back, or Evigo gives up on
+  a device.
 
 ## 0.2.2
 
