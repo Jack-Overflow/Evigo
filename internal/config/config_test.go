@@ -74,6 +74,10 @@ func TestGivenInvalidConfigurationWhenLoadedThenItFailsWithoutLeakingSecrets(t *
 		"email plain login":   minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [b@example.lan], security: none, username: monitor, password: secret-value}}\n",
 		"email two passwords": minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [b@example.lan], username: monitor, password: secret-value, password_file: /tmp/password}}\n",
 		"email bad port":      minimal + "alerts: {email: {host: smtp.example.lan, port: 70000, from: a@example.lan, to: [b@example.lan]}}\n",
+		"discord plain http":  minimal + "alerts: {discord: {webhook_url: 'http://discord.com/api/webhooks/1/secret-value'}}\n",
+		"discord other host":  minimal + "alerts: {discord: {webhook_url: 'https://example.lan/api/webhooks/1/secret-value'}}\n",
+		"discord other path":  minimal + "alerts: {discord: {webhook_url: 'https://discord.com/channels/1/secret-value'}}\n",
+		"discord unresolved":  minimal + "alerts: {discord: {webhook_url: '${EVIGO_TEST_MISSING}'}}\n",
 	}
 	for name, text := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -201,6 +205,25 @@ func TestGivenNoAlertsSectionWhenLoadedThenEmailIsOff(t *testing.T) {
 	}
 	if email := currentConfig.Alerts.Email; email.Host != "" || email.Port != 587 || email.Security != "starttls" {
 		t.Fatalf("email %+v", email)
+	}
+	if currentConfig.Alerts.Discord.WebhookURL != "" {
+		t.Fatal("discord is on")
+	}
+}
+
+func TestGivenDiscordWebhookFromEnvironmentWhenLoadedThenItExpands(t *testing.T) {
+	// Given a Discord webhook supplied by the environment.
+	t.Setenv("EVIGO_TEST_DISCORD_WEBHOOK", "https://discord.com/api/webhooks/123/webhook-secret")
+	text := minimal + "alerts: {discord: {webhook_url: '${EVIGO_TEST_DISCORD_WEBHOOK}'}}\n"
+
+	// When the configuration is loaded.
+	currentConfig, err := loadText(t, text)
+	// Then the webhook URL is expanded.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if currentConfig.Alerts.Discord.WebhookURL != "https://discord.com/api/webhooks/123/webhook-secret" {
+		t.Fatal("discord webhook was not expanded")
 	}
 }
 

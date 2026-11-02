@@ -62,7 +62,7 @@ func (sender *fakeSender) sentTitles() []string {
 }
 
 func newTestService(sender Sender, logs *bytes.Buffer) *Service {
-	return NewService(sender, slog.New(slog.NewTextHandler(logs, nil)))
+	return NewService(map[string]Sender{"test": sender}, slog.New(slog.NewTextHandler(logs, nil)))
 }
 
 func TestGivenRaisedAlertWhenSenderSucceedsThenItIsSent(t *testing.T) {
@@ -84,7 +84,7 @@ func TestGivenFailingSenderWhenAlertIsRaisedThenTheFailureIsLoggedAndNotRetried(
 	// Given a sender that fails.
 	var logs syncBuffer
 	sender := newFakeSender(1)
-	service := NewService(sender, slog.New(slog.NewTextHandler(&logs, nil)))
+	service := NewService(map[string]Sender{"test": sender}, slog.New(slog.NewTextHandler(&logs, nil)))
 
 	// When an alert is raised.
 	service.Raise(OnBattery(time.Now(), 90))
@@ -118,7 +118,7 @@ func TestGivenHungSenderWhenMoreAlertsThanTheQueueHoldsAreRaisedThenRaiseNeverBl
 	// Given a service whose sender never finishes.
 	var logs syncBuffer
 	started := &atomic.Int32{}
-	service := NewService(hungSender{started: started}, slog.New(slog.NewTextHandler(&logs, nil)))
+	service := NewService(map[string]Sender{"test": hungSender{started: started}}, slog.New(slog.NewTextHandler(&logs, nil)))
 
 	// When more alerts are raised than the queue holds.
 	finished := make(chan struct{})
@@ -161,9 +161,45 @@ func TestGivenSeveralAlertsWhenTheyAreRaisedThenTheyAreSentInOrder(t *testing.T)
 	}
 }
 
+func TestGivenOneProviderHangsWhenAlertIsRaisedThenTheOtherStillSendsIt(t *testing.T) {
+	// Given a provider that never finishes and one that works.
+	working := newFakeSender(0)
+	senders := map[string]Sender{"hung": hungSender{started: &atomic.Int32{}}, "working": working}
+	service := NewService(senders, slog.New(slog.DiscardHandler))
+
+	// When an alert is raised.
+	service.Raise(OnBattery(time.Now(), 90))
+	working.waitForAttempts(t, 1)
+
+	// Then the working provider sends it without waiting for the hung one.
+	if titles := working.sentTitles(); len(titles) != 1 || titles[0] != "UPS on battery" {
+		t.Fatalf("sent %v", titles)
+	}
+}
+
+func TestGivenFailingSenderWhenAlertIsRaisedThenTheLogNamesTheProvider(t *testing.T) {
+	// Given a Discord sender that fails.
+	var logs syncBuffer
+	sender := newFakeSender(1)
+	service := NewService(map[string]Sender{"discord": sender}, slog.New(slog.NewTextHandler(&logs, nil)))
+
+	// When an alert is raised.
+	service.Raise(OnBattery(time.Now(), 90))
+	sender.waitForAttempts(t, 1)
+
+	// Then the failure says which provider it came from.
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(logs.String(), "provider=discord") {
+		if time.Now().After(deadline) {
+			t.Fatalf("logs %s", logs.String())
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestGivenNoSenderWhenAlertIsRaisedThenNothingHappens(t *testing.T) {
-	// Given a service with no sender configured.
-	service := newTestService(nil, &bytes.Buffer{})
+	// Given a service with no provider configured.
+	service := NewService(nil, slog.New(slog.DiscardHandler))
 
 	// When an alert is raised.
 	service.Raise(OnBattery(time.Now(), 90))
@@ -192,6 +228,29 @@ func TestGivenOneWakeAttemptWhenAlertIsBuiltThenTheCountIsSingular(t *testing.T)
 	// Then the count reads correctly and names the device.
 	if alert.Body != "Home server answered ping after 1 wake attempt." {
 		t.Fatalf("body %q", alert.Body)
+	}
+}
+
+func TestGivenEachAlertWhenItIsBuiltThenProblemsAndRecoveriesAreToldApart(t *testing.T) {
+	for _, scenario := range []struct {
+		alert Alert
+		want  Severity
+	}{
+		{OnBattery(time.Now(), 90), Problem},
+		{MainsRestored(time.Now(), 90), Resolved},
+		{DeviceRecovered(time.Now(), "Home server", 1), Resolved},
+		{DeviceGaveUp(time.Now(), "Home server", 3), Problem},
+	} {
+		t.Run(scenario.alert.Title, func(t *testing.T) {
+			// Given one of the alerts.
+
+			// When it is built.
+
+			// Then its severity says whether something went wrong or recovered.
+			if scenario.alert.Severity != scenario.want {
+				t.Fatalf("severity %d, want %d", scenario.alert.Severity, scenario.want)
+			}
+		})
 	}
 }
 

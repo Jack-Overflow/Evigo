@@ -95,6 +95,15 @@ certificates, and `starttls` refuses a server that doesn't offer encryption.
 With Docker, set `SMTP_USERNAME` and `SMTP_PASSWORD` in the same `.env` file and
 use `"${SMTP_USERNAME}"` and `"${SMTP_PASSWORD}"` in the configuration.
 
+## `alerts.discord`: Discord alerts
+
+| Setting       | Default | What it does                                                                                             |
+| ------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `webhook_url` | off     | The channel's webhook URL, starting `https://discord.com/api/webhooks/`. Empty turns Discord alerts off. |
+
+The URL is a secret. With Docker, set `DISCORD_WEBHOOK_URL` in the `.env` file
+and use `"${DISCORD_WEBHOOK_URL}"` in the configuration.
+
 ## `log` and `state`
 
 | Setting      | Default      | What it does                                                                      |

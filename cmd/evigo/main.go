@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/alerts"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/discord"
 	"github.com/Jack-Overflow/Evigo/internal/alerts/email"
 	"github.com/Jack-Overflow/Evigo/internal/api"
 	"github.com/Jack-Overflow/Evigo/internal/config"
@@ -125,7 +126,7 @@ func run(settings config.Config, stderr io.Writer) error {
 	ups := nut.NewReader(nutSettings(settings), nil)
 	defer ups.Close()
 	deviceRecovery := recovery.New(recoverySettings(settings), configuredDevices, saved, logger)
-	alertService := alerts.NewService(alertSender(settings), logger)
+	alertService := alerts.NewService(alertSenders(settings), logger)
 	loop := monitor.New(monitorSettings(settings), ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, alertService, logger)
 	services := []func(context.Context) error{loop.Run}
 	if settings.Web.Listen != "" {
@@ -152,21 +153,25 @@ func recordStarted(ctx context.Context, db *database.DB, logger *slog.Logger) {
 	}
 }
 
-func alertSender(settings config.Config) alerts.Sender {
-	configured := settings.Alerts.Email
-	if configured.Host == "" {
-		return nil
+func alertSenders(settings config.Config) map[string]alerts.Sender {
+	senders := map[string]alerts.Sender{}
+	if configured := settings.Alerts.Email; configured.Host != "" {
+		senders["email"] = email.New(email.Settings{
+			Host:     configured.Host,
+			Port:     configured.Port,
+			Security: email.Security(configured.Security),
+			Username: configured.Username,
+			Password: configured.Password,
+			From:     configured.From,
+			To:       configured.To,
+		})
 	}
 
-	return email.New(email.Settings{
-		Host:     configured.Host,
-		Port:     configured.Port,
-		Security: email.Security(configured.Security),
-		Username: configured.Username,
-		Password: configured.Password,
-		From:     configured.From,
-		To:       configured.To,
-	})
+	if webhookURL := settings.Alerts.Discord.WebhookURL; webhookURL != "" {
+		senders["discord"] = discord.New(webhookURL)
+	}
+
+	return senders
 }
 
 func nutSettings(settings config.Config) nut.Settings {

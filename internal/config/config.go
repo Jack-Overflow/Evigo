@@ -33,7 +33,12 @@ type Config struct {
 }
 
 type Alerts struct {
-	Email Email `yaml:"email"`
+	Email   Email   `yaml:"email"`
+	Discord Discord `yaml:"discord"`
+}
+
+type Discord struct {
+	WebhookURL string `yaml:"webhook_url"`
 }
 
 type Email struct {
@@ -156,8 +161,15 @@ func (settings *Config) resolveCredentials() error {
 	}
 
 	email := &settings.Alerts.Email
+	if err := resolveLogin("alerts.email", &email.Username, &email.Password, email.PasswordFile); err != nil {
+		return err
+	}
 
-	return resolveLogin("alerts.email", &email.Username, &email.Password, email.PasswordFile)
+	discord := &settings.Alerts.Discord
+	var err error
+	discord.WebhookURL, err = expandCredential(discord.WebhookURL, "alerts.discord.webhook_url")
+
+	return err
 }
 
 func resolveLogin(section string, username, password *string, passwordFile string) error {

@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -26,6 +27,7 @@ func (settings Config) Validate() error {
 		settings.validateRecovery,
 		settings.validateWeb,
 		settings.validateAlerts,
+		settings.validateDiscord,
 		settings.validateDevices,
 	} {
 		if err := validate(); err != nil {
@@ -143,6 +145,20 @@ func (settings Config) validateAlerts() error {
 		return errors.New("invalid email credentials: line breaks and NUL are not allowed")
 	case email.Username != "" && email.Security == "none" && !slices.Contains([]string{"localhost", "127.0.0.1", "::1"}, email.Host):
 		return errors.New("alerts.email.security none only allows a login to localhost")
+	}
+
+	return nil
+}
+
+func (settings Config) validateDiscord() error {
+	webhookURL := settings.Alerts.Discord.WebhookURL
+	if webhookURL == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(webhookURL)
+	if err != nil || parsed.Scheme != "https" || !slices.Contains([]string{"discord.com", "discordapp.com"}, parsed.Host) || !strings.HasPrefix(parsed.Path, "/api/webhooks/") {
+		return errors.New("alerts.discord.webhook_url must be a https://discord.com/api/webhooks/ URL")
 	}
 
 	return nil

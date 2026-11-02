@@ -674,7 +674,7 @@ func (hungAlertSender) Send(ctx context.Context, _ alerts.Alert) error {
 func TestGivenHungAlertSenderWhenPowerReturnsThenTheWakeIsStillSent(t *testing.T) {
 	// Given a real alert service whose only sender never finishes.
 	h := newHarness(t)
-	service := alerts.NewService(hungAlertSender{}, slog.New(slog.DiscardHandler))
+	service := alerts.NewService(map[string]alerts.Sender{"test": hungAlertSender{}}, slog.New(slog.DiscardHandler))
 	h.monitor.alerts = service
 
 	// When an outage ends with the device off.

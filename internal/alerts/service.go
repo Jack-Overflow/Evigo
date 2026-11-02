@@ -16,46 +16,45 @@ type Sender interface {
 }
 
 type Service struct {
-	sender Sender
-	queue  chan Alert
+	queues map[string]chan Alert
 	log    *slog.Logger
 }
 
-func NewService(sender Sender, log *slog.Logger) *Service {
-	service := &Service{sender: sender, queue: make(chan Alert, queueCapacity), log: log}
-	if sender != nil {
-		go service.sendInOrder()
+func NewService(sendersByProvider map[string]Sender, log *slog.Logger) *Service {
+	service := &Service{queues: map[string]chan Alert{}, log: log}
+	for provider, sender := range sendersByProvider {
+		queue := make(chan Alert, queueCapacity)
+		service.queues[provider] = queue
+		go service.sendInOrder(provider, sender, queue)
 	}
 
 	return service
 }
 
 func (service *Service) Raise(alert Alert) {
-	if service.sender == nil {
-		return
-	}
-
-	select {
-	case service.queue <- alert:
-	default:
-		service.log.Warn("alert queue is full; alert dropped", "alert", alert.Title)
+	for provider, queue := range service.queues {
+		select {
+		case queue <- alert:
+		default:
+			service.log.Warn("alert queue is full; alert dropped", "provider", provider, "alert", alert.Title)
+		}
 	}
 }
 
-func (service *Service) sendInOrder() {
-	for alert := range service.queue {
-		service.send(alert)
+func (service *Service) sendInOrder(provider string, sender Sender, queue chan Alert) {
+	for alert := range queue {
+		service.send(provider, sender, alert)
 	}
 }
 
-func (service *Service) send(alert Alert) {
+func (service *Service) send(provider string, sender Sender, alert Alert) {
 	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 	defer cancel()
-	if err := service.sender.Send(ctx, alert); err != nil {
-		service.log.Warn("cannot send alert", "alert", alert.Title, "error", err)
+	if err := sender.Send(ctx, alert); err != nil {
+		service.log.Warn("cannot send alert", "provider", provider, "alert", alert.Title, "error", err)
 
 		return
 	}
 
-	service.log.Info("alert sent", "alert", alert.Title)
+	service.log.Info("alert sent", "provider", provider, "alert", alert.Title)
 }

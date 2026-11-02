@@ -12,6 +12,7 @@ services:
       NUT_PASSWORD: ${NUT_PASSWORD:-}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     volumes:
       - ./config.yaml:/etc/evigo/config.yaml:ro
       - state:/var/lib/evigo

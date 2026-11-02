@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Optional email alerts when the UPS goes on battery, mains power returns, a
-  woken device comes back, or Evigo gives up on a device.
+- Optional email and Discord alerts when the UPS goes on battery, mains power
+  returns, a woken device comes back, or Evigo gives up on a device.
 
 ## 0.2.2
 

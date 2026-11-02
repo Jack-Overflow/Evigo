@@ -53,6 +53,10 @@ alerts:
     # Alternatively use password_file: /run/secrets/smtp_password
     # from: evigo@example.lan
     # to: [admin@example.lan]
+  # Leave webhook_url empty to turn off Discord alerts.
+  discord:
+    webhook_url: ''
+    # webhook_url: "${DISCORD_WEBHOOK_URL}"
 devices:
   - id: server
     name: Home server
