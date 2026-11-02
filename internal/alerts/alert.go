@@ -55,6 +55,10 @@ func DeviceGaveUp(at time.Time, deviceName string, attempts int) Alert {
 	return Alert{At: at, Severity: Problem, Title: deviceName + " did not come back", Body: body}
 }
 
+func Test(at time.Time) Alert {
+	return Alert{At: at, Severity: Resolved, Title: "Test alert", Body: "Evigo can send alerts here."}
+}
+
 func wakeAttempts(attempts int) string {
 	if attempts == 1 {
 		return "1 wake attempt"
