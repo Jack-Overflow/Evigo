@@ -110,7 +110,7 @@ returns `200` while Evigo is checking normally, for uptime monitors.
 
 ## Alerts
 
-Set `alerts.email`, `alerts.discord`, or both to hear when something happens:
+Evigo can send alerts by email, to Discord, to ntfy, or to any webhook. Set up as many as you like:
 
 ```yaml
 alerts:
@@ -122,18 +122,28 @@ alerts:
     to: [admin@example.lan]
   discord:
     webhook_url: "${DISCORD_WEBHOOK_URL}"
+  ntfy:
+    url: https://ntfy.example.lan # optional, defaults to https://ntfy.sh
+    topic: "${NTFY_TOPIC}"
+  webhook:
+    url: "${WEBHOOK_URL}"
 ```
 
-For Discord, create a webhook in the channel's settings under
-**Integrations** and copy its URL. Treat it like a password: anyone with it can
-post to the channel.
+- **Discord:** create a webhook in the channel's settings under
+  **Integrations** and copy its URL. Anyone with it can post to the channel.
+- **ntfy:** subscribe to the topic in the ntfy app. On the public `ntfy.sh`
+  server anyone who knows the topic can read it, so pick one that's hard to
+  guess, or set `url` to your own server.
+- **Webhook:** Evigo posts JSON with `title`, `body`, `severity` (`problem` or
+  `resolved`) and `at`, for Home Assistant, n8n or your own scripts.
 
 You'll hear when the UPS goes on battery, when mains power returns, when a woken
 device comes back, and when Evigo gives up on a device. Alerts are for your
 information and never hold up a wake.
 
 An alert that can't be sent is logged and not retried. Keep your router and
-modem on the UPS so alerts can still leave during a power cut.
+modem on the UPS so alerts can still leave during a power cut, or use a
+self-hosted ntfy server or webhook on your network.
 
 ## Troubleshooting
 

@@ -78,6 +78,13 @@ func TestGivenInvalidConfigurationWhenLoadedThenItFailsWithoutLeakingSecrets(t *
 		"discord other host":  minimal + "alerts: {discord: {webhook_url: 'https://example.lan/api/webhooks/1/secret-value'}}\n",
 		"discord other path":  minimal + "alerts: {discord: {webhook_url: 'https://discord.com/channels/1/secret-value'}}\n",
 		"discord unresolved":  minimal + "alerts: {discord: {webhook_url: '${EVIGO_TEST_MISSING}'}}\n",
+		"ntfy bad topic":      minimal + "alerts: {ntfy: {topic: 'secret-value/other'}}\n",
+		"ntfy bad url":        minimal + "alerts: {ntfy: {url: 'ftp://ntfy.example.lan', topic: alerts}}\n",
+		"ntfy plain token":    minimal + "alerts: {ntfy: {url: 'http://ntfy.example.lan', topic: alerts, token: secret-value}}\n",
+		"ntfy token no topic": minimal + "alerts: {ntfy: {token: secret-value}}\n",
+		"webhook bad scheme":  minimal + "alerts: {webhook: {url: 'ftp://example.lan/secret-value'}}\n",
+		"webhook no host":     minimal + "alerts: {webhook: {url: 'https:///secret-value'}}\n",
+		"webhook unresolved":  minimal + "alerts: {webhook: {url: '${EVIGO_TEST_MISSING}'}}\n",
 	}
 	for name, text := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -208,6 +215,50 @@ func TestGivenNoAlertsSectionWhenLoadedThenEmailIsOff(t *testing.T) {
 	}
 	if currentConfig.Alerts.Discord.WebhookURL != "" {
 		t.Fatal("discord is on")
+	}
+	if ntfy := currentConfig.Alerts.Ntfy; ntfy.Topic != "" || ntfy.URL != "https://ntfy.sh" {
+		t.Fatalf("ntfy %+v", ntfy)
+	}
+	if currentConfig.Alerts.Webhook.URL != "" {
+		t.Fatal("webhook is on")
+	}
+}
+
+func TestGivenNtfyAndWebhookSecretsFromEnvironmentWhenLoadedThenTheyExpand(t *testing.T) {
+	// Given ntfy and webhook settings with secrets supplied by the environment.
+	t.Setenv("EVIGO_TEST_NTFY_TOKEN", "tk_secret")
+	t.Setenv("EVIGO_TEST_WEBHOOK_URL", "https://home.example.lan/api/webhook/evigo-secret")
+	text := minimal + `alerts:
+  ntfy:
+    topic: evigo-alerts
+    token: "${EVIGO_TEST_NTFY_TOKEN}"
+  webhook:
+    url: "${EVIGO_TEST_WEBHOOK_URL}"
+`
+
+	// When the configuration is loaded.
+	currentConfig, err := loadText(t, text)
+	// Then the secrets are expanded and ntfy uses the public server.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ntfy := currentConfig.Alerts.Ntfy; ntfy.Token != "tk_secret" || ntfy.URL != "https://ntfy.sh" {
+		t.Fatal("ntfy settings were not loaded")
+	}
+	if currentConfig.Alerts.Webhook.URL != "https://home.example.lan/api/webhook/evigo-secret" {
+		t.Fatal("webhook URL was not expanded")
+	}
+}
+
+func TestGivenSelfHostedNtfyWithoutTLSWhenNoTokenIsSetThenItIsAccepted(t *testing.T) {
+	// Given a self-hosted ntfy server on the local network without TLS or a token.
+	text := minimal + "alerts: {ntfy: {url: 'http://192.0.2.30:8090', topic: evigo}}\n"
+
+	// When the configuration is loaded.
+	_, err := loadText(t, text)
+	// Then it is accepted, because nothing secret is sent.
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

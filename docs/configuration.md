@@ -104,6 +104,40 @@ use `"${SMTP_USERNAME}"` and `"${SMTP_PASSWORD}"` in the configuration.
 The URL is a secret. With Docker, set `DISCORD_WEBHOOK_URL` in the `.env` file
 and use `"${DISCORD_WEBHOOK_URL}"` in the configuration.
 
+## `alerts.ntfy`: ntfy alerts
+
+| Setting | Default           | What it does                                                                    |
+| ------- | ----------------- | ------------------------------------------------------------------------------- |
+| `topic` | off               | Topic to publish to: letters, digits, `-` and `_`. Empty turns ntfy alerts off. |
+| `url`   | `https://ntfy.sh` | Your ntfy server, if you host your own.                                         |
+| `token` | none              | Access token for a protected topic. Only sent over `https` or to `localhost`.   |
+
+Problems are sent with high priority, and recoveries with default priority.
+With Docker, set `NTFY_TOPIC` and `NTFY_TOKEN` in the `.env` file and use
+`"${NTFY_TOPIC}"` and `"${NTFY_TOKEN}"` in the configuration.
+
+## `alerts.webhook`: webhook alerts
+
+| Setting | Default | What it does                                                                 |
+| ------- | ------- | ---------------------------------------------------------------------------- |
+| `url`   | off     | `http` or `https` URL to post each alert to. Empty turns webhook alerts off. |
+
+Each alert is a `POST` with a JSON body:
+
+```json
+{
+  "title": "UPS on battery",
+  "body": "The UPS is running on battery at 90%.",
+  "severity": "problem",
+  "at": "2026-11-02T15:30:00Z"
+}
+```
+
+`severity` is `problem` or `resolved`, and `at` is when it happened, in UTC.
+Any `2xx` response counts as delivered. If the URL contains a secret, set
+`WEBHOOK_URL` in the `.env` file and use `"${WEBHOOK_URL}"` in the
+configuration.
+
 ## `log` and `state`
 
 | Setting      | Default      | What it does                                                                      |

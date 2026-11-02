@@ -16,6 +16,8 @@ import (
 	"github.com/Jack-Overflow/Evigo/internal/alerts"
 	"github.com/Jack-Overflow/Evigo/internal/alerts/discord"
 	"github.com/Jack-Overflow/Evigo/internal/alerts/email"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/ntfy"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/webhook"
 	"github.com/Jack-Overflow/Evigo/internal/api"
 	"github.com/Jack-Overflow/Evigo/internal/config"
 	"github.com/Jack-Overflow/Evigo/internal/database"
@@ -169,6 +171,14 @@ func alertSenders(settings config.Config) map[string]alerts.Sender {
 
 	if webhookURL := settings.Alerts.Discord.WebhookURL; webhookURL != "" {
 		senders["discord"] = discord.New(webhookURL)
+	}
+
+	if configured := settings.Alerts.Ntfy; configured.Topic != "" {
+		senders["ntfy"] = ntfy.New(ntfy.Settings{URL: configured.URL, Topic: configured.Topic, Token: configured.Token})
+	}
+
+	if url := settings.Alerts.Webhook.URL; url != "" {
+		senders["webhook"] = webhook.New(url)
 	}
 
 	return senders

@@ -1,12 +1,10 @@
 package discord
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/Jack-Overflow/Evigo/internal/alerts"
@@ -14,7 +12,6 @@ import (
 
 type Sender struct {
 	webhookURL string
-	client     *http.Client
 }
 
 const (
@@ -41,7 +38,7 @@ type embed struct {
 }
 
 func New(webhookURL string) *Sender {
-	return &Sender{webhookURL: webhookURL, client: &http.Client{}}
+	return &Sender{webhookURL: webhookURL}
 }
 
 func (sender *Sender) Send(ctx context.Context, alert alerts.Alert) error {
@@ -50,31 +47,23 @@ func (sender *Sender) Send(ctx context.Context, alert alerts.Alert) error {
 		color = green
 	}
 
-	body, _ := json.Marshal(message{Username: username, AvatarURL: avatarURL, Embeds: []embed{{
-		Title:       shorten(alert.Title, titleLimit),
-		Description: shorten(alert.Body, descriptionLimit),
-		Color:       color,
-		Timestamp:   alert.At.UTC().Format(time.RFC3339),
-	}}})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, sender.webhookURL, bytes.NewReader(body))
+	address, err := url.Parse(sender.webhookURL)
 	if err != nil {
 		return errors.New("discord: invalid webhook URL")
 	}
 
 	// Without wait, Discord can accept a message it then fails to save.
-	query := request.URL.Query()
+	query := address.Query()
 	query.Set("wait", "true")
-	request.URL.RawQuery = query.Encode()
-	request.Header.Set("Content-Type", "application/json")
-	// The client's error repeats the webhook URL, and its token lets anyone post to the channel.
-	response, err := sender.client.Do(request)
+	address.RawQuery = query.Encode()
+	err = alerts.PostJSON(ctx, address.String(), nil, message{Username: username, AvatarURL: avatarURL, Embeds: []embed{{
+		Title:       shorten(alert.Title, titleLimit),
+		Description: shorten(alert.Body, descriptionLimit),
+		Color:       color,
+		Timestamp:   alert.At.UTC().Format(time.RFC3339),
+	}}})
 	if err != nil {
-		return errors.New("discord: cannot reach webhook")
-	}
-
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return fmt.Errorf("discord: webhook returned status %d", response.StatusCode)
+		return fmt.Errorf("discord: %w", err)
 	}
 
 	return nil

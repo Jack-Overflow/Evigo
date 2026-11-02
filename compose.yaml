@@ -13,6 +13,9 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      NTFY_TOPIC: ${NTFY_TOPIC:-}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
     volumes:
       - ./config.yaml:/etc/evigo/config.yaml:ro
       - state:/var/lib/evigo

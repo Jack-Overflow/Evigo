@@ -35,10 +35,22 @@ type Config struct {
 type Alerts struct {
 	Email   Email   `yaml:"email"`
 	Discord Discord `yaml:"discord"`
+	Ntfy    Ntfy    `yaml:"ntfy"`
+	Webhook Webhook `yaml:"webhook"`
 }
 
 type Discord struct {
 	WebhookURL string `yaml:"webhook_url"`
+}
+
+type Ntfy struct {
+	URL   string `yaml:"url"`
+	Topic string `yaml:"topic"`
+	Token string `yaml:"token"`
+}
+
+type Webhook struct {
+	URL string `yaml:"url"`
 }
 
 type Email struct {
@@ -115,6 +127,7 @@ func Defaults() Config {
 	settings.Probe = Probe{Timeout: 2 * time.Second}
 	settings.WOL = WOL{Broadcast: "255.255.255.255", Port: 9}
 	settings.Alerts.Email = Email{Port: 587, Security: "starttls"}
+	settings.Alerts.Ntfy = Ntfy{URL: "https://ntfy.sh"}
 
 	return settings
 }
@@ -165,11 +178,22 @@ func (settings *Config) resolveCredentials() error {
 		return err
 	}
 
-	discord := &settings.Alerts.Discord
-	var err error
-	discord.WebhookURL, err = expandCredential(discord.WebhookURL, "alerts.discord.webhook_url")
+	for _, secret := range []struct {
+		field string
+		value *string
+	}{
+		{"alerts.discord.webhook_url", &settings.Alerts.Discord.WebhookURL},
+		{"alerts.ntfy.topic", &settings.Alerts.Ntfy.Topic},
+		{"alerts.ntfy.token", &settings.Alerts.Ntfy.Token},
+		{"alerts.webhook.url", &settings.Alerts.Webhook.URL},
+	} {
+		var err error
+		if *secret.value, err = expandCredential(*secret.value, secret.field); err != nil {
+			return err
+		}
+	}
 
-	return err
+	return nil
 }
 
 func resolveLogin(section string, username, password *string, passwordFile string) error {

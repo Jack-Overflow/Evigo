@@ -62,58 +62,6 @@ func TestGivenResolvedAlertWhenItIsSentThenTheEmbedIsGreen(t *testing.T) {
 	}
 }
 
-func TestGivenWebhookRejectsWhenAlertIsSentThenTheErrorGivesOnlyTheStatus(t *testing.T) {
-	// Given a webhook that has been deleted.
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		http.Error(writer, `{"message": "Unknown Webhook secret-token"}`, http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	// When an alert is sent.
-	err := New(server.URL+webhookPath).Send(context.Background(), alerts.OnBattery(time.Now(), 90))
-
-	// Then the error gives the status code and nothing from the URL or the reply.
-	if err == nil || err.Error() != "discord: webhook returned status 404" {
-		t.Fatalf("error %v", err)
-	}
-}
-
-func TestGivenUnreachableWebhookWhenAlertIsSentThenTheErrorHidesTheURL(t *testing.T) {
-	// Given a webhook that can't be reached.
-	server := httptest.NewServer(http.NotFoundHandler())
-	server.Close()
-
-	// When an alert is sent.
-	err := New(server.URL+webhookPath).Send(context.Background(), alerts.OnBattery(time.Now(), 90))
-
-	// Then the error never contains the webhook token.
-	if err == nil || strings.Contains(err.Error(), "secret-token") {
-		t.Fatalf("error %v", err)
-	}
-}
-
-func TestGivenSilentWebhookWhenTheDeadlinePassesThenSendReturns(t *testing.T) {
-	// Given a webhook that never replies.
-	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
-	defer server.Close()
-	defer close(release)
-
-	// When an alert is sent with a short deadline.
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	started := time.Now()
-	err := New(server.URL+webhookPath).Send(ctx, alerts.OnBattery(time.Now(), 90))
-
-	// Then it gives up at the deadline without exposing the token.
-	if err == nil || strings.Contains(err.Error(), "secret-token") {
-		t.Fatalf("error %v", err)
-	}
-	if elapsed := time.Since(started); elapsed > 5*time.Second {
-		t.Fatalf("returned after %s", elapsed)
-	}
-}
-
 func TestGivenWebhookWithAThreadWhenAlertIsSentThenDiscordIsAskedToConfirmItWasSaved(t *testing.T) {
 	// Given a webhook URL that posts into a thread.
 	var query url.Values

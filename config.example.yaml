@@ -57,6 +57,18 @@ alerts:
   discord:
     webhook_url: ''
     # webhook_url: "${DISCORD_WEBHOOK_URL}"
+  # Leave topic empty to turn off ntfy alerts.
+  ntfy:
+    topic: ''
+    # topic: "${NTFY_TOPIC}"
+    # Your own ntfy server, if you host one.
+    # url: https://ntfy.sh
+    # Access token for a protected topic.
+    # token: "${NTFY_TOKEN}"
+  # Leave url empty to turn off webhook alerts.
+  webhook:
+    url: ''
+    # url: "${WEBHOOK_URL}"
 devices:
   - id: server
     name: Home server

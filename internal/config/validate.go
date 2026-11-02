@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	idPattern       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
-	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$`)
+	idPattern        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+	hostnamePattern  = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$`)
+	ntfyTopicPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 )
 
 func (settings Config) Validate() error {
@@ -28,6 +29,8 @@ func (settings Config) Validate() error {
 		settings.validateWeb,
 		settings.validateAlerts,
 		settings.validateDiscord,
+		settings.validateNtfy,
+		settings.validateWebhook,
 		settings.validateDevices,
 	} {
 		if err := validate(); err != nil {
@@ -162,6 +165,49 @@ func (settings Config) validateDiscord() error {
 	}
 
 	return nil
+}
+
+func (settings Config) validateNtfy() error {
+	ntfy := settings.Alerts.Ntfy
+	if ntfy.Topic == "" {
+		if ntfy.Token != "" {
+			return errors.New("alerts.ntfy.topic is required to send to ntfy")
+		}
+
+		return nil
+	}
+
+	parsed, ok := httpURL(ntfy.URL)
+	switch {
+	case !ok:
+		return errors.New("alerts.ntfy.url must be an http or https URL")
+	case !ntfyTopicPattern.MatchString(ntfy.Topic):
+		return errors.New("alerts.ntfy.topic must be 1 to 64 letters, digits, dashes or underscores")
+	case ntfy.Token != "" && !textOK(ntfy.Token):
+		return errors.New("invalid ntfy token: line breaks and NUL are not allowed")
+	case ntfy.Token != "" && parsed.Scheme != "https" && !slices.Contains([]string{"localhost", "127.0.0.1", "::1"}, parsed.Hostname()):
+		return errors.New("alerts.ntfy.token is only sent over https or to localhost")
+	}
+
+	return nil
+}
+
+func (settings Config) validateWebhook() error {
+	if settings.Alerts.Webhook.URL == "" {
+		return nil
+	}
+
+	if _, ok := httpURL(settings.Alerts.Webhook.URL); !ok {
+		return errors.New("alerts.webhook.url must be an http or https URL")
+	}
+
+	return nil
+}
+
+func httpURL(address string) (*url.URL, bool) {
+	parsed, err := url.Parse(address)
+
+	return parsed, err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil
 }
 
 func emailAddressOK(address string) bool {
