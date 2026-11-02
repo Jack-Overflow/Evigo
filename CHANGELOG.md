@@ -5,6 +5,8 @@
 - Optional alerts by email, Discord, ntfy or webhook when the UPS goes on
   battery, mains power returns, a woken device comes back, or Evigo gives up on
   a device.
+- `evigo test-alerts` sends a test alert to each configured provider and
+  reports which ones worked.
 
 ## 0.2.2
 

@@ -8,7 +8,7 @@ import (
 
 const (
 	queueCapacity = 100
-	sendTimeout   = 30 * time.Second
+	SendTimeout   = 30 * time.Second
 )
 
 type Sender interface {
@@ -48,7 +48,7 @@ func (service *Service) sendInOrder(provider string, sender Sender, queue chan A
 }
 
 func (service *Service) send(provider string, sender Sender, alert Alert) {
-	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), SendTimeout)
 	defer cancel()
 	if err := sender.Send(ctx, alert); err != nil {
 		service.log.Warn("cannot send alert", "provider", provider, "alert", alert.Title, "error", err)

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -30,7 +32,7 @@ import (
 
 var version = "dev"
 
-var errUsage = errors.New("usage: evigo {run|validate|version} [--config path] [--verbose]")
+var errUsage = errors.New("usage: evigo {run|validate|test-alerts|version} [--config path] [--verbose]")
 
 func main() {
 	if err := execute(os.Args[1:], os.Stdout, os.Stderr); err != nil {
@@ -74,9 +76,44 @@ func execute(arguments []string, stdout, stderr io.Writer) error {
 		}
 
 		return run(settings, stderr)
+	case "test-alerts":
+		settings, err := loadConfig(command, options, stderr)
+		if err != nil {
+			return err
+		}
+
+		return testAlerts(alertSenders(settings), stdout)
 	}
 
 	return errUsage
+}
+
+func testAlerts(senders map[string]alerts.Sender, stdout io.Writer) error {
+	if len(senders) == 0 {
+		return errors.New("no alert providers are configured")
+	}
+
+	alert := alerts.Test(time.Now())
+	failed := 0
+	for _, provider := range slices.Sorted(maps.Keys(senders)) {
+		ctx, cancel := context.WithTimeout(context.Background(), alerts.SendTimeout)
+		err := senders[provider].Send(ctx, alert)
+		cancel()
+		if err != nil {
+			failed++
+			fmt.Fprintf(stdout, "%-8s failed: %v\n", provider, err)
+
+			continue
+		}
+
+		fmt.Fprintf(stdout, "%-8s sent\n", provider)
+	}
+
+	if failed > 0 {
+		return fmt.Errorf("%d of %d alert providers failed", failed, len(senders))
+	}
+
+	return nil
 }
 
 func loadConfig(command string, options []string, stderr io.Writer) (config.Config, error) {
