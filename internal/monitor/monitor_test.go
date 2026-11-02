@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jack-Overflow/Evigo/internal/alerts"
 	"github.com/Jack-Overflow/Evigo/internal/devices"
 	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
@@ -20,6 +21,7 @@ import (
 )
 
 type fakeUPS struct {
+	age    time.Duration
 	status string
 	clock  *time.Time
 }
@@ -29,7 +31,7 @@ func (ups *fakeUPS) Read(context.Context) (nut.Reading, error) {
 		return nut.Reading{}, errors.New("connection refused")
 	}
 
-	return nut.Reading{At: *ups.clock, Status: ups.status, Battery: 100}, nil
+	return nut.Reading{At: ups.clock.Add(-ups.age), Status: ups.status, Battery: 100}, nil
 }
 
 type fakeStorage struct {
@@ -76,8 +78,26 @@ func (storage *fakeStorage) SavePending(_ context.Context, pending map[string]re
 	return nil
 }
 
+type fakeAlertRaiser struct {
+	raised []alerts.Alert
+}
+
+func (raiser *fakeAlertRaiser) Raise(alert alerts.Alert) {
+	raiser.raised = append(raiser.raised, alert)
+}
+
+func (raiser *fakeAlertRaiser) titles() []string {
+	titles := []string{}
+	for _, alert := range raiser.raised {
+		titles = append(titles, alert.Title)
+	}
+
+	return titles
+}
+
 type harness struct {
 	t        *testing.T
+	alerts   *fakeAlertRaiser
 	monitor  *Monitor
 	ups      *fakeUPS
 	storage  *fakeStorage
@@ -93,8 +113,8 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { listener.Close() })
 	mac, _ := net.ParseMAC("02:00:00:00:00:10")
-	configured := []*devices.Device{{ID: "server", Host: "192.0.2.10", MAC: mac, WakeAddress: listener.LocalAddr().String()}}
-	h := &harness{t: t, storage: &fakeStorage{}, listener: listener, clock: time.Now()}
+	configured := []*devices.Device{{ID: "server", Name: "Home server", Host: "192.0.2.10", MAC: mac, WakeAddress: listener.LocalAddr().String()}}
+	h := &harness{t: t, alerts: &fakeAlertRaiser{}, storage: &fakeStorage{}, listener: listener, clock: time.Now()}
 	h.ups = &fakeUPS{status: "OL", clock: &h.clock}
 	ping := func(ctx context.Context, _ string, _ ...string) error {
 		if h.online {
@@ -112,7 +132,7 @@ func newHarness(t *testing.T) *harness {
 		MaxReadingAge:     30 * time.Second,
 	}, configured, nil, log)
 	settings := Settings{PollInterval: 10 * time.Second, OnBatteryPollInterval: 2 * time.Second, PingTimeout: 2 * time.Second, MaxReadingAge: 30 * time.Second}
-	h.monitor = New(settings, h.ups, configured, deviceRecovery, h.storage, map[string]recovery.Progress{}, ping, log)
+	h.monitor = New(settings, h.ups, configured, deviceRecovery, h.storage, map[string]recovery.Progress{}, ping, h.alerts, log)
 	h.monitor.now = func() time.Time { return h.clock }
 
 	return h
@@ -479,7 +499,7 @@ func TestGivenHistoryThatIsSlowAndFailsEveryPassWhenLoopRunsThenRecoveryStillWak
 		MaxReadingAge:     150 * time.Millisecond,
 	}, configured, nil, log)
 	settings := Settings{PollInterval: 100 * time.Millisecond, OnBatteryPollInterval: 100 * time.Millisecond, PingTimeout: time.Second, MaxReadingAge: 150 * time.Millisecond}
-	loop := New(settings, ups, configured, deviceRecovery, slowFailingHistory{delay: 80 * time.Millisecond}, map[string]recovery.Progress{}, ping, log)
+	loop := New(settings, ups, configured, deviceRecovery, slowFailingHistory{delay: 80 * time.Millisecond}, map[string]recovery.Progress{}, ping, &fakeAlertRaiser{}, log)
 
 	// When the loop runs through an outage and power returns with the device off.
 	ctx, stop := context.WithCancel(context.Background())
@@ -527,5 +547,188 @@ func TestGivenPowerBecomingStableWhenSnapshotsAreReadThenTheySayWhenTimeLeftIsBe
 	// Then only the snapshot from the stable pass says time left is being spent.
 	if beforeStable || !h.monitor.Snapshot().SpendingTimeLeft {
 		t.Fatalf("spending before stable %t, after %t", beforeStable, h.monitor.Snapshot().SpendingTimeLeft)
+	}
+}
+
+func TestGivenStartupOnMainsWhenPassesRunThenNoPowerAlertIsRaised(t *testing.T) {
+	// Given a fresh start on mains.
+	h := newHarness(t)
+
+	// When passes run with nothing changing.
+	h.pass(0)
+	h.pass(10 * time.Second)
+
+	// Then a restart does not announce a power restoration.
+	if titles := h.alerts.titles(); len(titles) != 0 {
+		t.Fatalf("raised %v", titles)
+	}
+}
+
+func TestGivenStartupOnBatteryWhenFirstPassRunsThenOnBatteryIsRaised(t *testing.T) {
+	// Given a fresh start during an outage.
+	h := newHarness(t)
+	h.ups.status = "OB DISCHRG"
+
+	// When the first pass runs.
+	h.pass(0)
+
+	// Then the outage is reported.
+	if titles := h.alerts.titles(); !slices.Equal(titles, []string{"UPS on battery"}) {
+		t.Fatalf("raised %v", titles)
+	}
+}
+
+func TestGivenOutageWhenReadingsAreLostAndReturnThenEachPowerChangeIsRaisedOnce(t *testing.T) {
+	// Given the UPS going on battery.
+	h := newHarness(t)
+	h.pass(0)
+	h.ups.status = "OB DISCHRG"
+	h.pass(2 * time.Second)
+	h.pass(2 * time.Second)
+
+	// When readings are lost, return on battery, are lost again, and then show mains.
+	h.ups.status = ""
+	h.pass(2 * time.Second)
+	h.ups.status = "OB DISCHRG"
+	h.pass(2 * time.Second)
+	h.ups.status = ""
+	h.pass(2 * time.Second)
+	h.ups.status = "OL CHRG"
+	h.pass(2 * time.Second)
+	h.pass(10 * time.Second)
+
+	// Then a lost reading is never mistaken for a power change.
+	want := []string{"UPS on battery", "UPS mains power restored"}
+	if titles := h.alerts.titles(); !slices.Equal(titles, want) {
+		t.Fatalf("raised %v", titles)
+	}
+}
+
+func TestGivenPowerChangeWhenTheReadingExpiresDuringPingingThenNoAlertIsRaised(t *testing.T) {
+	// Given a power change and a ping that outlasts the reading.
+	h := newHarness(t)
+	h.pass(0)
+	h.ups.status = "OB DISCHRG"
+	ping := h.monitor.ping
+	h.monitor.ping = func(ctx context.Context, name string, arguments ...string) error {
+		h.clock = h.clock.Add(30 * time.Second)
+
+		return ping(ctx, name, arguments...)
+	}
+
+	// When the pass runs.
+	h.pass(2 * time.Second)
+
+	// Then the expired reading cannot raise a power alert.
+	if titles := h.alerts.titles(); len(titles) != 0 {
+		t.Fatalf("raised %v", titles)
+	}
+}
+
+func TestGivenWokenDeviceWhenItAnswersThenDeviceRecoveredIsRaisedOnce(t *testing.T) {
+	// Given a device being woken after an outage.
+	h := newHarness(t)
+	h.outageThenStablePower()
+	h.pass(10 * time.Second)
+	if !h.packetReceived() {
+		t.Fatal("device was not woken")
+	}
+
+	// When it comes back online.
+	h.online = true
+	h.pass(10 * time.Second)
+	h.pass(10 * time.Second)
+
+	// Then its recovery is reported once.
+	want := []string{"UPS on battery", "UPS mains power restored", "Home server is back online"}
+	if titles := h.alerts.titles(); !slices.Equal(titles, want) {
+		t.Fatalf("raised %v", titles)
+	}
+}
+
+func TestGivenWakeRetriesWhenDeviceNeverAnswersThenOnlyDeviceGaveUpIsRaised(t *testing.T) {
+	// Given a device being woken after an outage.
+	h := newHarness(t)
+	h.outageThenStablePower()
+
+	// When it stays offline well past its timeout, through many retries.
+	for range 70 {
+		h.pass(10 * time.Second)
+	}
+
+	// Then retries raise nothing and the final result is reported once.
+	want := []string{"UPS on battery", "UPS mains power restored", "Home server did not come back"}
+	if titles := h.alerts.titles(); !slices.Equal(titles, want) {
+		t.Fatalf("raised %v", titles)
+	}
+}
+
+type hungAlertSender struct{}
+
+func (hungAlertSender) Send(ctx context.Context, _ alerts.Alert) error {
+	<-ctx.Done()
+
+	return ctx.Err()
+}
+
+func TestGivenHungAlertSenderWhenPowerReturnsThenTheWakeIsStillSent(t *testing.T) {
+	// Given a real alert service whose only sender never finishes.
+	h := newHarness(t)
+	service := alerts.NewService(map[string]alerts.Sender{"test": hungAlertSender{}}, slog.New(slog.DiscardHandler))
+	h.monitor.alerts = service
+
+	// When an outage ends with the device off.
+	h.outageThenStablePower()
+	h.pass(10 * time.Second)
+
+	// Then the device is still woken on schedule.
+	if !h.packetReceived() {
+		t.Fatal("a hung alert sender delayed the wake")
+	}
+}
+
+func TestGivenOutageWhenOldOrContradictoryMainsReadingsArriveThenOnlyFreshMainsRaisesRestoration(t *testing.T) {
+	// Given an observed outage.
+	h := newHarness(t)
+	h.ups.status = "OB"
+	h.pass(0)
+
+	// When old, future-dated and contradictory readings appear before fresh mains.
+	h.ups.status = "OL"
+	h.ups.age = 30 * time.Second
+	h.pass(2 * time.Second)
+	h.ups.age = -time.Second
+	h.pass(2 * time.Second)
+	h.ups.age = 0
+	h.ups.status = "OL OB"
+	h.pass(2 * time.Second)
+	h.ups.status = "OB"
+	h.pass(2 * time.Second)
+	h.ups.status = "OL"
+	h.pass(2 * time.Second)
+
+	// Then only the two confirmed transitions raise alerts.
+	if titles := h.alerts.titles(); !slices.Equal(titles, []string{"UPS on battery", "UPS mains power restored"}) {
+		t.Fatalf("raised %v", titles)
+	}
+}
+
+func TestGivenDeviceThatStaysOnlineWhenRecoveryFinishesThenNoDeviceAlertIsRaised(t *testing.T) {
+	// Given a device that remains online through an outage.
+	h := newHarness(t)
+	h.online = true
+	h.pass(0)
+	h.ups.status = "OB"
+	h.pass(2 * time.Second)
+	h.ups.status = "OL"
+
+	// When recovery finishes without a wake.
+	for range 5 {
+		h.pass(10 * time.Second)
+	}
+
+	// Then only power alerts were raised.
+	if titles := h.alerts.titles(); !slices.Equal(titles, []string{"UPS on battery", "UPS mains power restored"}) {
+		t.Fatalf("raised %v", titles)
 	}
 }

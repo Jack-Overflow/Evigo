@@ -41,7 +41,7 @@ func testSettings() Settings {
 }
 
 func newHarness(t *testing.T, saved map[string]Progress) *harness {
-	configured := []*devices.Device{{ID: "server", MAC: net.HardwareAddr{0x02, 0, 0, 0, 0, 0x10}}}
+	configured := []*devices.Device{{ID: "server", Name: "Home server", MAC: net.HardwareAddr{0x02, 0, 0, 0, 0, 0x10}}}
 
 	return &harness{t: t, recovery: New(testSettings(), configured, saved, slog.New(slog.DiscardHandler)), now: start}
 }
@@ -536,5 +536,55 @@ func TestGivenPendingDeviceWhenPingBecomesUnknownAfterAWakeThenItIsStillBeingWok
 	progress, pending := h.recovery.Pending()["server"]
 	if len(due) != 0 || !pending || progress.State(devices.Unknown) != Waking {
 		t.Fatalf("due %v, pending %t, progress %+v", due, pending, progress)
+	}
+}
+
+func TestGivenOutageWhenReadingsAreUnusableThenTheSameOutageIsNotAnnouncedAgain(t *testing.T) {
+	for name, reading := range map[string]*nut.Reading{
+		"missing":       nil,
+		"stale mains":   {At: start.Add(-time.Minute), Status: "OL"},
+		"expired mains": {At: start.Add(-30 * time.Second), Status: "OL"},
+		"future mains":  {At: start.Add(time.Second), Status: "OL"},
+		"contradictory": {At: start, Status: "OL OB"},
+		"unknown":       {At: start, Status: "UNKNOWN"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Given an observed outage.
+			h := newHarness(t, nil)
+			battery := &nut.Reading{At: start, Status: "OB", Battery: 90}
+			if change := h.recovery.Update(Pass{At: start, Reading: battery}); len(change.Alerts) != 1 {
+				t.Fatalf("initial change %v", change)
+			}
+
+			// When a reading cannot establish a new power state.
+			if change := h.recovery.Update(Pass{At: start, Reading: reading}); len(change.Alerts) != 0 {
+				t.Fatalf("unusable reading changed power: %v", change)
+			}
+
+			// Then battery returning does not announce a second outage.
+			if change := h.recovery.Update(Pass{At: start, Reading: battery}); len(change.Alerts) != 0 {
+				t.Fatalf("duplicate change %v", change)
+			}
+			if change := h.recovery.Update(Pass{At: start, Reading: &nut.Reading{At: start, Status: "OL CHRG", Battery: 20}}); len(change.Alerts) != 1 {
+				t.Fatalf("restoration change %v", change)
+			}
+		})
+	}
+}
+
+func TestGivenRecoveryInProgressWhenTheReadingReachesItsMaximumAgeThenWakingIsPaused(t *testing.T) {
+	// Given a recovery that has already sent a wake.
+	h := newHarness(t, nil)
+	h.outage()
+	h.passesUntilWake(mains, 10)
+	at := h.now.Add(pollStep)
+	reading := &nut.Reading{At: at.Add(-testSettings().MaxReadingAge), Status: "OL", Battery: 100}
+
+	// When the next reading is exactly at its maximum age.
+	outcome := h.recovery.Update(Pass{At: at, Reading: reading, Reachability: map[string]devices.Reachability{"server": offline}})
+
+	// Then no wake is due and the stability delay must start again.
+	if len(outcome.Wake) != 0 || !h.recovery.SafeSince().IsZero() {
+		t.Fatalf("wake %v, safe since %v", outcome.Wake, h.recovery.SafeSince())
 	}
 }

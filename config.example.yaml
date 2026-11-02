@@ -39,6 +39,36 @@ web:
   # Hostnames the dashboard is reached by, for example through a reverse proxy,
   # without a port. IP addresses and localhost are always accepted.
   # allowed_hosts: [evigo.example.lan]
+alerts:
+  # Leave host empty to turn off email alerts.
+  email:
+    host: ''
+    # host: smtp.example.lan
+    # starttls usually uses port 587, tls usually 465. none is for a trusted relay.
+    # port: 587
+    # security: starttls
+    # Omit both fields if the server needs no login.
+    # username: "${SMTP_USERNAME}"
+    # password: "${SMTP_PASSWORD}"
+    # Alternatively use password_file: /run/secrets/smtp_password
+    # from: evigo@example.lan
+    # to: [admin@example.lan]
+  # Leave webhook_url empty to turn off Discord alerts.
+  discord:
+    webhook_url: ''
+    # webhook_url: "${DISCORD_WEBHOOK_URL}"
+  # Leave topic empty to turn off ntfy alerts.
+  ntfy:
+    topic: ''
+    # topic: "${NTFY_TOPIC}"
+    # Your own ntfy server, if you host one.
+    # url: https://ntfy.sh
+    # Access token for a protected topic.
+    # token: "${NTFY_TOKEN}"
+  # Leave url empty to turn off webhook alerts.
+  webhook:
+    url: ''
+    # url: "${WEBHOOK_URL}"
 devices:
   - id: server
     name: Home server

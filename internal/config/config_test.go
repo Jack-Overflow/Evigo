@@ -46,23 +46,45 @@ func TestGivenEnvironmentCredentialsWhenLoadedThenSecretsExpandAndDefaultsApply(
 func TestGivenInvalidConfigurationWhenLoadedThenItFailsWithoutLeakingSecrets(t *testing.T) {
 	// Given invalid configuration variants and a value that must remain private.
 	cases := map[string]string{
-		"unknown":            minimal + "unknown: true\n",
-		"nested unknown":     strings.Replace(minimal, "  ups: main", "  ups: main\n  hostname: localhost", 1),
-		"type error":         minimal + "probe: {timeout: secret-value}\n",
-		"duplicate YAML key": minimal + "nut: {host: other}\n",
-		"extra document":     minimal + "---\n{}\n",
-		"unresolved secret":  strings.Replace(minimal, "  ups: main", "  ups: main\n  username: monitor\n  password: ${EVIGO_TEST_MISSING}", 1),
-		"partial auth":       strings.Replace(minimal, "  ups: main", "  ups: main\n  username: monitor", 1),
-		"bad threshold":      minimal + "recovery: {min_battery_percent: 101}\n",
-		"nan threshold":      minimal + "recovery: {min_battery_percent: .nan}\n",
-		"negative duration":  minimal + "probe: {timeout: -2s}\n",
-		"stale interval":     minimal + "poll: {interval: 40s}\n",
-		"zero port":          strings.Replace(minimal, "  ups: main", "  ups: main\n  port: 0", 1),
-		"missing MAC":        strings.Replace(minimal, "    mac: \"02:00:00:00:00:10\"\n", "", 1),
-		"bad broadcast":      minimal + "wol: {broadcast: broadcast.example}\n",
-		"duplicate ID":       minimal + "  - {id: server, name: other, host: localhost, mac: '02:00:00:00:00:11'}\n",
-		"unknown section":    minimal + "dashboard: {listen: 127.0.0.1:8080}\n",
-		"both passwords":     strings.Replace(minimal, "  ups: main", "  ups: main\n  password: secret-value\n  password_file: /tmp/password", 1),
+		"unknown":             minimal + "unknown: true\n",
+		"nested unknown":      strings.Replace(minimal, "  ups: main", "  ups: main\n  hostname: localhost", 1),
+		"type error":          minimal + "probe: {timeout: secret-value}\n",
+		"duplicate YAML key":  minimal + "nut: {host: other}\n",
+		"extra document":      minimal + "---\n{}\n",
+		"unresolved secret":   strings.Replace(minimal, "  ups: main", "  ups: main\n  username: monitor\n  password: ${EVIGO_TEST_MISSING}", 1),
+		"partial auth":        strings.Replace(minimal, "  ups: main", "  ups: main\n  username: monitor", 1),
+		"bad threshold":       minimal + "recovery: {min_battery_percent: 101}\n",
+		"nan threshold":       minimal + "recovery: {min_battery_percent: .nan}\n",
+		"negative duration":   minimal + "probe: {timeout: -2s}\n",
+		"stale interval":      minimal + "poll: {interval: 40s}\n",
+		"zero port":           strings.Replace(minimal, "  ups: main", "  ups: main\n  port: 0", 1),
+		"missing MAC":         strings.Replace(minimal, "    mac: \"02:00:00:00:00:10\"\n", "", 1),
+		"bad broadcast":       minimal + "wol: {broadcast: broadcast.example}\n",
+		"duplicate ID":        minimal + "  - {id: server, name: other, host: localhost, mac: '02:00:00:00:00:11'}\n",
+		"unknown section":     minimal + "dashboard: {listen: 127.0.0.1:8080}\n",
+		"both passwords":      strings.Replace(minimal, "  ups: main", "  ups: main\n  password: secret-value\n  password_file: /tmp/password", 1),
+		"email unknown key":   minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [b@example.lan], smtp_host: x}}\n",
+		"email no host":       minimal + "alerts: {email: {from: a@example.lan, to: [b@example.lan]}}\n",
+		"email no from":       minimal + "alerts: {email: {host: smtp.example.lan, to: [b@example.lan]}}\n",
+		"email no to":         minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan}}\n",
+		"email named from":    minimal + "alerts: {email: {host: smtp.example.lan, from: 'Evigo <a@example.lan>', to: [b@example.lan]}}\n",
+		"email bad to":        minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [secret-value]}}\n",
+		"email bad security":  minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [b@example.lan], security: ssl}}\n",
+		"email partial auth":  minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [b@example.lan], username: monitor}}\n",
+		"email plain login":   minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [b@example.lan], security: none, username: monitor, password: secret-value}}\n",
+		"email two passwords": minimal + "alerts: {email: {host: smtp.example.lan, from: a@example.lan, to: [b@example.lan], username: monitor, password: secret-value, password_file: /tmp/password}}\n",
+		"email bad port":      minimal + "alerts: {email: {host: smtp.example.lan, port: 70000, from: a@example.lan, to: [b@example.lan]}}\n",
+		"discord plain http":  minimal + "alerts: {discord: {webhook_url: 'http://discord.com/api/webhooks/1/secret-value'}}\n",
+		"discord other host":  minimal + "alerts: {discord: {webhook_url: 'https://example.lan/api/webhooks/1/secret-value'}}\n",
+		"discord other path":  minimal + "alerts: {discord: {webhook_url: 'https://discord.com/channels/1/secret-value'}}\n",
+		"discord unresolved":  minimal + "alerts: {discord: {webhook_url: '${EVIGO_TEST_MISSING}'}}\n",
+		"ntfy bad topic":      minimal + "alerts: {ntfy: {topic: 'secret-value/other'}}\n",
+		"ntfy bad url":        minimal + "alerts: {ntfy: {url: 'ftp://ntfy.example.lan', topic: alerts}}\n",
+		"ntfy plain token":    minimal + "alerts: {ntfy: {url: 'http://ntfy.example.lan', topic: alerts, token: secret-value}}\n",
+		"ntfy token no topic": minimal + "alerts: {ntfy: {token: secret-value}}\n",
+		"webhook bad scheme":  minimal + "alerts: {webhook: {url: 'ftp://example.lan/secret-value'}}\n",
+		"webhook no host":     minimal + "alerts: {webhook: {url: 'https:///secret-value'}}\n",
+		"webhook unresolved":  minimal + "alerts: {webhook: {url: '${EVIGO_TEST_MISSING}'}}\n",
 	}
 	for name, text := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -176,5 +198,149 @@ func TestGivenWebSettingsWhenValidatedThenOnlyAddressesAndExactHostsAreAccepted(
 				t.Fatalf("validation error %v; want valid=%t", err, scenario.valid)
 			}
 		})
+	}
+}
+
+func TestGivenNoAlertsSectionWhenLoadedThenEmailIsOff(t *testing.T) {
+	// Given a configuration without an alerts section.
+
+	// When it is loaded.
+	currentConfig, err := loadText(t, minimal)
+	// Then email is off and secure defaults are ready if it is turned on.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if email := currentConfig.Alerts.Email; email.Host != "" || email.Port != 587 || email.Security != "starttls" {
+		t.Fatalf("email %+v", email)
+	}
+	if currentConfig.Alerts.Discord.WebhookURL != "" {
+		t.Fatal("discord is on")
+	}
+	if ntfy := currentConfig.Alerts.Ntfy; ntfy.Topic != "" || ntfy.URL != "https://ntfy.sh" {
+		t.Fatalf("ntfy %+v", ntfy)
+	}
+	if currentConfig.Alerts.Webhook.URL != "" {
+		t.Fatal("webhook is on")
+	}
+}
+
+func TestGivenNtfyAndWebhookSecretsFromEnvironmentWhenLoadedThenTheyExpand(t *testing.T) {
+	// Given ntfy and webhook settings with secrets supplied by the environment.
+	t.Setenv("EVIGO_TEST_NTFY_TOKEN", "tk_secret")
+	t.Setenv("EVIGO_TEST_WEBHOOK_URL", "https://home.example.lan/api/webhook/evigo-secret")
+	text := minimal + `alerts:
+  ntfy:
+    topic: evigo-alerts
+    token: "${EVIGO_TEST_NTFY_TOKEN}"
+  webhook:
+    url: "${EVIGO_TEST_WEBHOOK_URL}"
+`
+
+	// When the configuration is loaded.
+	currentConfig, err := loadText(t, text)
+	// Then the secrets are expanded and ntfy uses the public server.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ntfy := currentConfig.Alerts.Ntfy; ntfy.Token != "tk_secret" || ntfy.URL != "https://ntfy.sh" {
+		t.Fatal("ntfy settings were not loaded")
+	}
+	if currentConfig.Alerts.Webhook.URL != "https://home.example.lan/api/webhook/evigo-secret" {
+		t.Fatal("webhook URL was not expanded")
+	}
+}
+
+func TestGivenSelfHostedNtfyWithoutTLSWhenNoTokenIsSetThenItIsAccepted(t *testing.T) {
+	// Given a self-hosted ntfy server on the local network without TLS or a token.
+	text := minimal + "alerts: {ntfy: {url: 'http://192.0.2.30:8090', topic: evigo}}\n"
+
+	// When the configuration is loaded.
+	_, err := loadText(t, text)
+	// Then it is accepted, because nothing secret is sent.
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGivenDiscordWebhookFromEnvironmentWhenLoadedThenItExpands(t *testing.T) {
+	// Given a Discord webhook supplied by the environment.
+	t.Setenv("EVIGO_TEST_DISCORD_WEBHOOK", "https://discord.com/api/webhooks/123/webhook-secret")
+	text := minimal + "alerts: {discord: {webhook_url: '${EVIGO_TEST_DISCORD_WEBHOOK}'}}\n"
+
+	// When the configuration is loaded.
+	currentConfig, err := loadText(t, text)
+	// Then the webhook URL is expanded.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if currentConfig.Alerts.Discord.WebhookURL != "https://discord.com/api/webhooks/123/webhook-secret" {
+		t.Fatal("discord webhook was not expanded")
+	}
+}
+
+func TestGivenEmailCredentialsFromEnvironmentWhenLoadedThenTheyExpand(t *testing.T) {
+	// Given email settings with credentials supplied by the environment.
+	t.Setenv("EVIGO_TEST_SMTP_USER", "monitor")
+	t.Setenv("EVIGO_TEST_SMTP_PASSWORD", "smtp-secret")
+	text := minimal + `alerts:
+  email:
+    host: smtp.example.lan
+    username: ${EVIGO_TEST_SMTP_USER}
+    password: ${EVIGO_TEST_SMTP_PASSWORD}
+    from: evigo@example.lan
+    to: [admin@example.lan]
+`
+
+	// When the configuration is loaded.
+	currentConfig, err := loadText(t, text)
+	// Then the credentials are expanded.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if email := currentConfig.Alerts.Email; email.Username != "monitor" || email.Password != "smtp-secret" {
+		t.Fatal("email credentials were not expanded")
+	}
+}
+
+func TestGivenEmailPasswordFileWhenLoadedThenItIsUsed(t *testing.T) {
+	// Given email settings with a password file.
+	path := filepath.Join(t.TempDir(), "secret")
+	os.WriteFile(path, []byte("smtp-secret\n"), 0o600)
+	text := minimal + "alerts: {email: {host: smtp.example.lan, username: monitor, password_file: " + path + ", from: a@example.lan, to: [b@example.lan]}}\n"
+
+	// When the configuration is loaded.
+	currentConfig, err := loadText(t, text)
+	// Then the password comes from the file.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if currentConfig.Alerts.Email.Password != "smtp-secret" {
+		t.Fatal("email password file was not used")
+	}
+}
+
+func TestGivenMissingEmailPasswordFileWhenLoadedThenTheErrorNamesTheEmailSetting(t *testing.T) {
+	// Given email settings pointing at a missing password file.
+	path := filepath.Join(t.TempDir(), "missing")
+	text := minimal + "alerts: {email: {host: smtp.example.lan, username: monitor, password_file: " + path + ", from: a@example.lan, to: [b@example.lan]}}\n"
+
+	// When the configuration is loaded.
+	_, err := loadText(t, text)
+
+	// Then the error names the email setting rather than the NUT one.
+	if err == nil || err.Error() != "cannot open alerts.email.password_file" {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestGivenRelayWithoutTLSWhenLoginIsToLocalhostThenItIsAccepted(t *testing.T) {
+	// Given a local relay without TLS and with a login.
+	text := minimal + "alerts: {email: {host: 127.0.0.1, port: 25, security: none, username: monitor, password: smtp-secret, from: a@example.lan, to: [b@example.lan]}}\n"
+
+	// When the configuration is loaded.
+	_, err := loadText(t, text)
+	// Then it is accepted, because the login stays on this machine.
+	if err != nil {
+		t.Fatal(err)
 	}
 }
