@@ -1,5 +1,8 @@
 # Evigo
 
+[![Latest release](https://img.shields.io/github/v/release/Jack-Overflow/Evigo)](https://github.com/Jack-Overflow/Evigo/releases/latest)
+[![License](https://img.shields.io/github/license/Jack-Overflow/Evigo)](LICENSE)
+
 Evigo turns your devices back on after a power cut. It watches your UPS through
 [Network UPS Tools (NUT)](https://networkupstools.org/), remembers which devices
 were on when the power went out, and wakes them with Wake-on-LAN once power is
