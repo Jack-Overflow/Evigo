@@ -14,7 +14,7 @@ concurrency:
 jobs:
   lint-go:
     name: Go lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -32,7 +32,7 @@ jobs:
           go mod verify
   lint-frontend:
     name: Frontend lint and types
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -48,7 +48,7 @@ jobs:
       - run: make frontend-lint
   lint-script:
     name: Script and workflow lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -62,7 +62,7 @@ jobs:
       - run: make shell-check workflow-check
   test-go:
     name: Go race tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -76,7 +76,7 @@ jobs:
       - run: go run ./cmd/evigo validate --config config.example.yaml
   test-frontend:
     name: Frontend tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -90,7 +90,7 @@ jobs:
       - run: make frontend-test
   security:
     name: Dependency vulnerabilities
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -111,7 +111,7 @@ jobs:
   build-native:
     name: Native builds
     needs: [lint-go, lint-frontend, lint-script, test-go, test-frontend, security]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -159,7 +159,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             arch: amd64
           - runner: ubuntu-24.04-arm
             arch: arm64
@@ -188,7 +188,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             arch: amd64
           - runner: ubuntu-24.04-arm
             arch: arm64
