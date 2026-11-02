@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Jack-Overflow/Evigo/internal/alerts"
+	"github.com/Jack-Overflow/Evigo/internal/alerts/email"
 	"github.com/Jack-Overflow/Evigo/internal/api"
 	"github.com/Jack-Overflow/Evigo/internal/config"
 	"github.com/Jack-Overflow/Evigo/internal/database"
@@ -123,7 +125,8 @@ func run(settings config.Config, stderr io.Writer) error {
 	ups := nut.NewReader(nutSettings(settings), nil)
 	defer ups.Close()
 	deviceRecovery := recovery.New(recoverySettings(settings), configuredDevices, saved, logger)
-	loop := monitor.New(monitorSettings(settings), ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, logger)
+	alertService := alerts.NewService(alertSender(settings), logger)
+	loop := monitor.New(monitorSettings(settings), ups, configuredDevices, deviceRecovery, db, saved, devices.RunCommand, alertService, logger)
 	services := []func(context.Context) error{loop.Run}
 	if settings.Web.Listen != "" {
 		listener, err := net.Listen("tcp", settings.Web.Listen)
@@ -147,6 +150,23 @@ func recordStarted(ctx context.Context, db *database.DB, logger *slog.Logger) {
 	if err := db.AppendHistory(ctx, []history.Event{started}); err != nil {
 		logger.Error("cannot save history", "error", err)
 	}
+}
+
+func alertSender(settings config.Config) alerts.Sender {
+	configured := settings.Alerts.Email
+	if configured.Host == "" {
+		return nil
+	}
+
+	return email.New(email.Settings{
+		Host:     configured.Host,
+		Port:     configured.Port,
+		Security: email.Security(configured.Security),
+		Username: configured.Username,
+		Password: configured.Password,
+		From:     configured.From,
+		To:       configured.To,
+	})
 }
 
 func nutSettings(settings config.Config) nut.Settings {

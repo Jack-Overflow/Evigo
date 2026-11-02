@@ -20,6 +20,10 @@ var (
 	settlingFlags = []string{"OL", "CHRG", "DISCHRG", "TRIM", "BOOST"}
 )
 
+func (reading *Reading) Fresh(at time.Time, maxAge time.Duration) bool {
+	return reading != nil && !at.Before(reading.At) && at.Sub(reading.At) < maxAge
+}
+
 func (reading Reading) Copy() *Reading {
 	values := make(map[string]string, len(reading.Values))
 	maps.Copy(values, reading.Values)
@@ -40,6 +44,12 @@ func (reading Reading) OnBattery() bool {
 	flags := reading.Flags()
 
 	return slices.Contains(flags, "OB") && !slices.Contains(flags, "OL")
+}
+
+func (reading Reading) OnMains() bool {
+	flags := reading.Flags()
+
+	return slices.Contains(flags, "OL") && !slices.Contains(flags, "OB")
 }
 
 func (reading Reading) Safe(minBatteryPercent float64) bool {

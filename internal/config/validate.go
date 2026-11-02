@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/mail"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +25,7 @@ func (settings Config) Validate() error {
 		settings.validateDurations,
 		settings.validateRecovery,
 		settings.validateWeb,
+		settings.validateAlerts,
 		settings.validateDevices,
 	} {
 		if err := validate(); err != nil {
@@ -111,6 +114,54 @@ func (settings Config) validateWeb() error {
 	}
 
 	return nil
+}
+
+func (settings Config) validateAlerts() error {
+	email := settings.Alerts.Email
+	if email.Host == "" {
+		if email.From != "" || len(email.To) != 0 || email.Username != "" || email.Password != "" {
+			return errors.New("alerts.email.host is required to send email")
+		}
+
+		return nil
+	}
+
+	switch {
+	case !hostOK(email.Host):
+		return errors.New("alerts.email.host is invalid")
+	case !portOK(email.Port):
+		return errors.New("alerts.email.port must be between 1 and 65535")
+	case !slices.Contains([]string{"starttls", "tls", "none"}, email.Security):
+		return errors.New("alerts.email.security must be starttls, tls, or none")
+	case !emailAddressOK(email.From):
+		return errors.New("alerts.email.from must be a plain email address")
+	case len(email.To) == 0 || !allEmailAddressesOK(email.To):
+		return errors.New("alerts.email.to must list at least one plain email address")
+	case (email.Username == "") != (email.Password == ""):
+		return errors.New("email authentication requires both username and password")
+	case email.Username != "" && (!textOK(email.Username) || !textOK(email.Password)):
+		return errors.New("invalid email credentials: line breaks and NUL are not allowed")
+	case email.Username != "" && email.Security == "none" && !slices.Contains([]string{"localhost", "127.0.0.1", "::1"}, email.Host):
+		return errors.New("alerts.email.security none only allows a login to localhost")
+	}
+
+	return nil
+}
+
+func emailAddressOK(address string) bool {
+	parsed, err := mail.ParseAddress(address)
+
+	return err == nil && parsed.Address == address
+}
+
+func allEmailAddressesOK(addresses []string) bool {
+	for _, address := range addresses {
+		if !emailAddressOK(address) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func allowedHostOK(allowed string) bool {

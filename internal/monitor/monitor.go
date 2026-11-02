@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Jack-Overflow/Evigo/internal/alerts"
 	"github.com/Jack-Overflow/Evigo/internal/devices"
 	"github.com/Jack-Overflow/Evigo/internal/history"
 	"github.com/Jack-Overflow/Evigo/internal/nut"
@@ -24,6 +25,10 @@ type Storage interface {
 	AppendHistory(ctx context.Context, events []history.Event) error
 }
 
+type AlertRaiser interface {
+	Raise(alert alerts.Alert)
+}
+
 type Settings struct {
 	PollInterval          time.Duration
 	OnBatteryPollInterval time.Duration
@@ -38,6 +43,7 @@ type Monitor struct {
 	recovery  *recovery.Recovery
 	storage   Storage
 	ping      devices.Runner
+	alerts    AlertRaiser
 	now       func() time.Time
 	log       *slog.Logger
 	saved     map[string]recovery.Progress
@@ -54,6 +60,7 @@ func New(
 	storage Storage,
 	saved map[string]recovery.Progress,
 	ping devices.Runner,
+	alertRaiser AlertRaiser,
 	log *slog.Logger,
 ) *Monitor {
 	monitor := &Monitor{
@@ -66,6 +73,7 @@ func New(
 		storageOK: true,
 		history:   &historyRecorder{storage: storage, log: log},
 		ping:      ping,
+		alerts:    alertRaiser,
 		now:       time.Now,
 		log:       log,
 	}
@@ -97,6 +105,10 @@ func (monitor *Monitor) Pass(ctx context.Context) time.Duration {
 	monitor.history.recordReachabilityChanges(at, monitor.devices, reachability)
 	outcome := monitor.recovery.Update(recovery.Pass{At: at, Reading: reading, Reachability: reachability})
 	monitor.history.record(outcome.Events...)
+	for _, alert := range outcome.Alerts {
+		monitor.alerts.Raise(alert)
+	}
+
 	if monitor.savePending(ctx) {
 		monitor.sendWakes(ctx, outcome.Wake, reading)
 	}
@@ -173,7 +185,7 @@ func (monitor *Monitor) sendWakes(ctx context.Context, due []*devices.Device, re
 
 	for _, device := range due {
 		at := monitor.now()
-		if reading == nil || at.Before(reading.At) || at.Sub(reading.At) >= monitor.settings.MaxReadingAge {
+		if !reading.Fresh(at, monitor.settings.MaxReadingAge) {
 			monitor.log.Warn("UPS reading too old to wake devices; retrying later")
 
 			return

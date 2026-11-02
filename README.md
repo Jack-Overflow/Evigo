@@ -108,6 +108,28 @@ a reverse proxy that adds one. If you reach it by hostname, add the name to
 The API serves `GET /api/status`, `GET /api/history` and `GET /health`, which
 returns `200` while Evigo is checking normally, for uptime monitors.
 
+## Alerts
+
+Set `alerts.email` to get an email when something happens:
+
+```yaml
+alerts:
+  email:
+    host: smtp.example.lan
+    username: "${SMTP_USERNAME}"
+    password: "${SMTP_PASSWORD}"
+    from: evigo@example.lan
+    to: [admin@example.lan]
+```
+
+You'll hear when the UPS goes on battery, when mains power returns, when a woken
+device comes back, and when Evigo gives up on a device. Alerts are for your
+information and never hold up a wake.
+
+An alert that can't be sent is logged and not retried. A mail relay on your
+network and on the UPS gives alerts the best chance of leaving during a power
+cut.
+
 ## Troubleshooting
 
 **A device wasn't woken.** It must have been on when the power went out and off

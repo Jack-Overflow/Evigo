@@ -76,6 +76,25 @@ At least one device is required.
 | `listen`        | off     | IP address and port to serve the dashboard on, such as `127.0.0.1:8080`. Empty turns it off.          |
 | `allowed_hosts` | none    | Hostnames, without a port, the dashboard may be reached by. IP addresses and `localhost` always work. |
 
+## `alerts.email`: email alerts
+
+| Setting         | Default    | What it does                                                                      |
+| --------------- | ---------- | --------------------------------------------------------------------------------- |
+| `host`          | off        | Address of your SMTP server. Empty turns email alerts off.                        |
+| `port`          | `587`      | SMTP server port. `tls` usually uses `465`.                                       |
+| `security`      | `starttls` | `starttls`, `tls`, or `none`. A login with `none` is only allowed to `localhost`. |
+| `username`      | none       | SMTP login. Set both `username` and a password, or neither.                       |
+| `password`      | none       | SMTP password. `"${NAME}"` reads it from the environment variable `NAME`.         |
+| `password_file` | none       | Read the password from this file instead of `password`.                           |
+| `from`          | required   | Plain address to send from, such as `evigo@example.lan`.                          |
+| `to`            | required   | List of plain addresses to send to.                                               |
+
+`starttls` and `tls` check the server's certificate against the system's trusted
+certificates, and `starttls` refuses a server that doesn't offer encryption.
+
+With Docker, set `SMTP_USERNAME` and `SMTP_PASSWORD` in the same `.env` file and
+use `"${SMTP_USERNAME}"` and `"${SMTP_PASSWORD}"` in the configuration.
+
 ## `log` and `state`
 
 | Setting      | Default      | What it does                                                                      |
