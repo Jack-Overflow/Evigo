@@ -144,6 +144,13 @@ You'll hear when the UPS goes on battery, when mains power returns, when a woken
 device comes back, and when Evigo gives up on a device. Alerts are for your
 information and never hold up a wake.
 
+Send a test alert to each provider to check your setup:
+
+```sh
+docker compose run --rm evigo test-alerts --config /etc/evigo/config.yaml # Docker
+sudo -u evigo evigo test-alerts --config /etc/evigo/config.yaml # Linux
+```
+
 An alert that can't be sent is logged and not retried. Keep your router and
 modem on the UPS so alerts can still leave during a power cut, or use a
 self-hosted ntfy server or webhook on your network.
