@@ -2,7 +2,7 @@
 
 ## 0.3.1
 
-- A single lost ping no longer marks a device offline.
+- A single lost ping no longer marks a device offline, reducing state flapping.
 
 ## 0.3.0
 
