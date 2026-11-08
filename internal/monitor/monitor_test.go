@@ -732,3 +732,58 @@ func TestGivenDeviceThatStaysOnlineWhenRecoveryFinishesThenNoDeviceAlertIsRaised
 		t.Fatalf("raised %v", titles)
 	}
 }
+
+func TestGivenOnlineDeviceWhenOneProbeIsLostThenHistoryStaysOnline(t *testing.T) {
+	// Given an online device with its initial state already recorded.
+	h := newHarness(t)
+	h.online = true
+	h.pass(0)
+	events := len(h.storage.history)
+	calls := 0
+	h.monitor.ping = func(ctx context.Context, _ string, _ ...string) error {
+		calls++
+		if calls == 1 {
+			return exec.CommandContext(ctx, "sh", "-c", "exit 1").Run()
+		}
+
+		return nil
+	}
+
+	// When the next check loses one probe but its retry succeeds.
+	h.pass(10 * time.Second)
+
+	// Then the device stays online without a false history transition.
+	if got := h.monitor.Snapshot().Devices[0].Reachability; got != devices.Online {
+		t.Fatalf("reachability = %s", got)
+	}
+	if len(h.storage.history) != events {
+		t.Fatal("transient loss added a history event")
+	}
+}
+
+func TestGivenPendingDeviceWhenProbeRetryAnswersThenItIsNotWoken(t *testing.T) {
+	// Given a device eligible to be woken after stable power.
+	h := newHarness(t)
+	h.outageThenStablePower()
+	calls := 0
+	h.monitor.ping = func(ctx context.Context, _ string, _ ...string) error {
+		calls++
+		if calls == 1 {
+			return exec.CommandContext(ctx, "sh", "-c", "exit 1").Run()
+		}
+
+		return nil
+	}
+
+	// When the first probe is lost but its retry answers as waking becomes allowed.
+	h.pass(10 * time.Second)
+
+	// Then recovery finishes without sending a wake packet.
+	device := h.monitor.Snapshot().Devices[0]
+	if device.Reachability != devices.Online || device.Pending != nil {
+		t.Fatalf("device = %+v", device)
+	}
+	if h.packetReceived() {
+		t.Fatal("woke a device that answered the retry")
+	}
+}

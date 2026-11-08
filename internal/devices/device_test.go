@@ -67,6 +67,99 @@ func TestGivenPingOutcomeWhenDevicePingedThenOnlyExitOneMeansOffline(t *testing.
 	}
 }
 
+func TestGivenProbeResultsWhenDevicePingedThenOnlyTwoMissedRepliesMeanOffline(t *testing.T) {
+	for _, scenario := range []struct {
+		name    string
+		results []Runner
+		want    Reachability
+	}{
+		{"first reply", []Runner{exitingWith("0")}, Online},
+		{"retry reply", []Runner{exitingWith("1"), exitingWith("0")}, Online},
+		{"two missed replies", []Runner{exitingWith("1"), exitingWith("1")}, Offline},
+		{"first error", []Runner{exitingWith("2")}, Unknown},
+		{"retry error", []Runner{exitingWith("1"), exitingWith("2")}, Unknown},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			// Given the results of successive probes.
+			device := &Device{ID: "server", Host: "192.0.2.10"}
+			calls := 0
+			run := func(ctx context.Context, name string, arguments ...string) error {
+				if calls >= len(scenario.results) {
+					t.Fatal("unexpected extra probe")
+				}
+				result := scenario.results[calls]
+				calls++
+
+				return result(ctx, name, arguments...)
+			}
+
+			// When the device is pinged.
+			got := device.Ping(context.Background(), run, time.Second)
+
+			// Then a reply succeeds immediately and only two missed replies mean offline.
+			if got != scenario.want || calls != len(scenario.results) {
+				t.Fatalf("got %s after %d probes, want %s after %d", got, calls, scenario.want, len(scenario.results))
+			}
+		})
+	}
+}
+
+func TestGivenRetryThatOutlastsTheProbeWhenDevicePingedThenTheOriginalDeadlineReportsUnknown(t *testing.T) {
+	// Given a missed reply followed by a retry that waits for cancellation.
+	device := &Device{ID: "server", Host: "192.0.2.10"}
+	var deadline time.Time
+	calls := 0
+	run := func(ctx context.Context, name string, arguments ...string) error {
+		calls++
+		at, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("probe has no deadline")
+		}
+		if calls == 1 {
+			deadline = at
+
+			return exitingWith("1")(ctx, name, arguments...)
+		}
+		if !at.Equal(deadline) {
+			t.Fatal("retry extended the probe deadline")
+		}
+		<-ctx.Done()
+
+		return ctx.Err()
+	}
+
+	// When the retry exceeds the shared timeout.
+	got := device.Ping(context.Background(), run, 100*time.Millisecond)
+
+	// Then it is unknown, never offline, and there are no further retries.
+	if got != Unknown || calls != 2 {
+		t.Fatalf("got %s after %d probes", got, calls)
+	}
+}
+
+func TestGivenCancellationAfterAMissedReplyWhenDevicePingedThenNoRetryIsRun(t *testing.T) {
+	// Given a probe whose parent is cancelled after its first missed reply.
+	device := &Device{ID: "server", Host: "192.0.2.10"}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	run := func(ctx context.Context, name string, arguments ...string) error {
+		calls++
+		err := exitingWith("1")(ctx, name, arguments...)
+		cancel()
+
+		return err
+	}
+
+	// When the device is pinged.
+	got := device.Ping(ctx, run, time.Second)
+
+	// Then cancellation is unknown and no retry is started.
+	if got != Unknown || calls != 1 {
+		t.Fatalf("got %s after %d probes", got, calls)
+	}
+}
+
 func TestGivenLoopbackListenerWhenDeviceWokenThenMagicPacketIsSent(t *testing.T) {
 	// Given a UDP listener standing in for the broadcast address.
 	listener, err := net.ListenPacket("udp4", "127.0.0.1:0")
