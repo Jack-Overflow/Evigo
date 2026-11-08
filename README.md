@@ -22,9 +22,6 @@ It only ever turns devices **on**. Keep your existing shutdown setup as it is.
 
 If Evigo restarts part-way through, it carries on where it left off.
 
-Device checks retry one missed ping before reporting a device offline. Both
-attempts share `probe.timeout`, with 40% of that time allowed for each reply.
-
 ## What you need
 
 - A UPS monitored by NUT, reachable from where Evigo runs.

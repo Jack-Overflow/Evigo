@@ -49,9 +49,7 @@ login on a network you trust.
 | --------- | ------- | ----------------------------------------- |
 | `timeout` | `2s`    | Total time allowed for each device check. |
 
-A missed reply is retried once before the device is reported offline. Both
-attempts share this timeout; each allows 40% of it for a reply, leaving time to
-run the commands. A command error or an expired timeout reports unknown.
+A device is reported offline only after two missed replies, each waiting up to 40% of this timeout.
 
 ## `wol`: Wake-on-LAN defaults
 
