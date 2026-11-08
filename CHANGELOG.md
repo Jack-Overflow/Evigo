@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Retry a missed ping once within the existing probe timeout before reporting
   a device offline, reducing state changes caused by transient packet loss.
