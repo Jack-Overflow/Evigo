@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Retry a missed ping once within the existing probe timeout before reporting
+  a device offline, reducing state changes caused by transient packet loss.
+
 ## 0.3.0
 
 - Optional alerts by email, Discord, ntfy or webhook when the UPS goes on

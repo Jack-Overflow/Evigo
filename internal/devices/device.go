@@ -67,19 +67,25 @@ func FromConfig(settings config.Config) ([]*Device, error) {
 func (device *Device) Ping(ctx context.Context, run Runner, timeout time.Duration) Reachability {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	waitSeconds := strconv.FormatFloat(max(0.001, timeout.Seconds()*0.8), 'f', 3, 64)
-	err := run(ctx, "ping", "-n", "-c", "1", "-W", waitSeconds, "--", device.Host)
-	var exitError *exec.ExitError
-	switch {
-	case ctx.Err() != nil:
-		return Unknown
-	case err == nil:
-		return Online
-	case errors.As(err, &exitError) && exitError.ExitCode() == 1:
-		return Offline
+	waitSeconds := strconv.FormatFloat(max(0.001, timeout.Seconds()*0.4), 'f', 3, 64)
+	for range 2 {
+		if ctx.Err() != nil {
+			return Unknown
+		}
+
+		err := run(ctx, "ping", "-n", "-c", "1", "-W", waitSeconds, "--", device.Host)
+		var exitError *exec.ExitError
+		switch {
+		case ctx.Err() != nil:
+			return Unknown
+		case err == nil:
+			return Online
+		case !errors.As(err, &exitError) || exitError.ExitCode() != 1:
+			return Unknown
+		}
 	}
 
-	return Unknown
+	return Offline
 }
 
 func (device *Device) Wake(ctx context.Context) error {

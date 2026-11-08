@@ -45,9 +45,13 @@ login on a network you trust.
 
 ## `probe`: checking devices
 
-| Setting   | Default | What it is                         |
-| --------- | ------- | ---------------------------------- |
-| `timeout` | `2s`    | How long to wait for a ping reply. |
+| Setting   | Default | What it is                                |
+| --------- | ------- | ----------------------------------------- |
+| `timeout` | `2s`    | Total time allowed for each device check. |
+
+A missed reply is retried once before the device is reported offline. Both
+attempts share this timeout; each allows 40% of it for a reply, leaving time to
+run the commands. A command error or an expired timeout reports unknown.
 
 ## `wol`: Wake-on-LAN defaults
 
