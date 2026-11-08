@@ -2,8 +2,7 @@
 
 ## 0.3.1
 
-- Retry a missed ping once within the existing probe timeout before reporting
-  a device offline, reducing state changes caused by transient packet loss.
+- A single lost ping no longer marks a device offline.
 
 ## 0.3.0
 
